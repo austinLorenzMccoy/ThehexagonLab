@@ -1,0 +1,24 @@
+{
+  "name": "workershub-backend",
+  "version": "1.0.0",
+  "description": "Backend services, database migrations, and seed scripts for Hexagon LABS",
+  "main": "scripts/seed.ts",
+  "scripts": {
+    "generate-mock-excel": "tsx scripts/generateMockExcel.ts",
+    "seed": "tsx scripts/seed.ts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.4",
+    "dotenv": "^16.4.5",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "^4.1.8",
+    "tsx": "^4.15.0",
+    "typescript": "^5.4.5",
+    "vitest": "^4.1.8"
+  }
+}
