@@ -569,7 +569,7 @@ export async function fetchMyDisputes(workerUserId: string): Promise<DisputeRow[
   return (data ?? []) as DisputeRow[]
 }
 
-/** Manager/admin dispute queue — every open/in-review dispute. */
+/** Admin dispute queue — every open/in-review dispute. */
 export async function fetchAllDisputes(): Promise<DisputeRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase

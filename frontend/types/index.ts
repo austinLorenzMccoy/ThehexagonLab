@@ -178,11 +178,14 @@ export interface UserPermissions {
   // Worker Recovery System — additive, does not change any flag above.
   isWorker: boolean
   isReferrer: boolean
+  /** Admin-only: managers no longer issue warnings or resolve disputes. */
   canManageWarnings: boolean
   canManageDisputes: boolean
   canViewFeedback: boolean
   canManagePayouts: boolean
   canManagePartnerContacts: boolean
+  /** Admin + manager: issue pay slips and settle month-end payment. */
+  canManagePaySlips: boolean
 }
 
 export function getPermissions(user: AppUser): UserPermissions {
@@ -197,11 +200,12 @@ export function getPermissions(user: AppUser): UserPermissions {
     assignedPlatforms:   user.platform_access,
     isWorker:                 user.role === 'worker',
     isReferrer:               user.role === 'referrer',
-    canManageWarnings:        ['admin', 'manager'].includes(user.role),
-    canManageDisputes:        ['admin', 'manager'].includes(user.role),
+    canManageWarnings:        user.role === 'admin',
+    canManageDisputes:        user.role === 'admin',
     canViewFeedback:          user.role === 'admin',
     canManagePayouts:         user.role === 'admin',
     canManagePartnerContacts: ['admin', 'manager'].includes(user.role),
+    canManagePaySlips:        ['admin', 'manager'].includes(user.role),
   }
 }
 

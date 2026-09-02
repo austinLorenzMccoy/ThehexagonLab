@@ -22,10 +22,11 @@ const MONTHS: PaySlipMonth[] = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-/** Admin-only — official pay-slip issuance. Per
- *  doc/Worker_Recovery_System_PRD.md §3/§4.3, only Admins upload pay
- *  slips (payslips_insert RLS restricts this to role = 'admin', not
- *  manager). Workers see their own slips read-only on /dashboard. */
+/** Admin + manager — official pay-slip issuance and month-end
+ *  settlement. Managers manage Pay Slips instead of Warnings &
+ *  Disputes, which are admin-only (see
+ *  20260903010000_manager_permission_swap.sql). Workers see their
+ *  own slips read-only on /dashboard. */
 export default function PaySlipsPage() {
   const { hasAccess, appUser } = useAuth()
   const { toast } = useToast()

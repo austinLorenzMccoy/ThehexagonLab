@@ -2,12 +2,12 @@ import { createServerSupabaseClient, createAdminClient } from '@/lib/supabase/se
 import { NextRequest, NextResponse } from 'next/server'
 import { initiateTransfer, isPaystackConfigured } from '@/lib/paystack'
 import { getDecryptedRecipientCode } from '@/lib/crypto'
-import { assertAdmin, isDemoPreview } from '@/lib/api-admin-guard'
+import { assertAdminOrManager, isDemoPreview } from '@/lib/api-admin-guard'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * POST /api/payments/process — admin-only. Settles a worker's
+ * POST /api/payments/process — admin or manager. Settles a worker's
  * month-end salary for a given pay slip via Paystack Transfer,
  * per doc/Worker_Recovery_System_PRD.md §4.3 step 2 ("Actual payment
  * is processed via Paystack and credited to the worker's account").
@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  *
  * Degrades gracefully — same pattern as /api/payouts/process — when
  * Paystack isn't configured or the worker has no recipient code on
- * file, so an admin is never blocked from marking a slip paid.
+ * file, so an admin or manager is never blocked from marking a slip paid.
  */
 export async function POST(request: NextRequest) {
   if (await isDemoPreview()) {
@@ -23,8 +23,8 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = await createServerSupabaseClient()
-  const admin = await assertAdmin(supabase)
-  if (!admin) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  const actor = await assertAdminOrManager(supabase)
+  if (!actor) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
 
   const { paySlipId } = await request.json()
   if (!paySlipId) {
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
   }
 
   await db.from('audit_log').insert({
-    user_id: admin.id,
+    user_id: actor.id,
     action: 'payment_processed',
     entity_type: 'payments',
     entity_id: (payment as any)?.id ?? null,
