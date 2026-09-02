@@ -115,7 +115,7 @@ export function ReferrerPortal() {
           <button
             onClick={handleRequestPayout}
             disabled={!eligible || requesting || hasPendingRequest}
-            className="flex items-center gap-2 rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-2 rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all disabled:cursor-not-allowed disabled:opacity-40"
           >
             {!eligible && <Lock className="h-4 w-4" />}
             {hasPendingRequest ? 'Request Pending' : requesting ? 'Requesting…' : 'Request Payout'}

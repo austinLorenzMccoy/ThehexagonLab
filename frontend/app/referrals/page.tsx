@@ -112,7 +112,7 @@ export default function ReferralsAdminPage() {
         {referrers.length > 0 && (
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="flex items-center gap-2 rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors"
+            className="flex items-center gap-2 rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all"
           >
             <Plus className="h-4 w-4" /> New Referral
           </button>
@@ -132,7 +132,7 @@ export default function ReferralsAdminPage() {
             <input name="referred_email" type="email" placeholder="Email (optional)"
               className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
           </div>
-          <button type="submit" className="rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors">
+          <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
             Save Referral
           </button>
         </form>

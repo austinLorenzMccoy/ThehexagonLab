@@ -218,7 +218,7 @@ export function WorkerPortal() {
             <input name="notes" placeholder="Notes (optional)"
               className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm sm:col-span-2" />
             <button type="submit" disabled={logging || !rate}
-              className="flex items-center justify-center gap-2 rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors disabled:opacity-50 sm:col-span-2">
+              className="flex items-center justify-center gap-2 rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-50 sm:col-span-2">
               <Plus className="h-4 w-4" /> {logging ? 'Logging…' : `Log at $${rate}/hr`}
             </button>
           </form>
@@ -295,7 +295,7 @@ export function WorkerPortal() {
               className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
             <textarea name="message" required rows={2} placeholder="Your feedback"
               className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
-            <button type="submit" className="w-full rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors">
+            <button type="submit" className="w-full rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
               Submit Feedback
             </button>
           </form>
@@ -328,7 +328,7 @@ export function WorkerPortal() {
               className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
             <textarea name="description" required rows={2} placeholder="Describe the discrepancy"
               className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
-            <button type="submit" className="w-full rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors">
+            <button type="submit" className="w-full rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
               Submit Dispute
             </button>
           </form>

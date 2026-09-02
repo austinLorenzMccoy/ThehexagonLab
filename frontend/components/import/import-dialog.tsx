@@ -215,7 +215,7 @@ export function ImportDialog({ config, onComplete, onClose }: ImportDialogProps)
               <button
                 onClick={handleImport}
                 disabled={importing || config.requiredColumns.some((col) => !mapping[col])}
-                className="w-full flex items-center justify-center gap-2 rounded-lg bg-ops px-4 py-2.5 text-sm font-medium text-white hover:bg-ops-dark transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 rounded-lg brand-gradient px-4 py-2.5 text-sm font-medium text-white transition-all disabled:opacity-50"
               >
                 {importing ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Importing...</>

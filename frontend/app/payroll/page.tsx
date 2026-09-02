@@ -520,7 +520,7 @@ export default function PayrollPage() {
               <button type="button" onClick={() => setEditingRow(null)} className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
                 Cancel
               </button>
-              <button type="submit" className="rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors">
+              <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
                 Save Changes
               </button>
             </div>

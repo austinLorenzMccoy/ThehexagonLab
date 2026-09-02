@@ -34,6 +34,9 @@ doc/
 coverage/
 *.lcov
 
+# TypeScript build cache
+*.tsbuildinfo
+
 # Misc
 *.log
 npm-debug.log*
