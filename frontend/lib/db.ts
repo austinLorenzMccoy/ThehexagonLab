@@ -8,6 +8,9 @@ import type {
   AppUser, WorkerTrackerRow, WorkerRegistryRow,
   OrderRow, PayrollRow, Platform, PlatformTaskColumn,
   PlatformStatsRow, TaskStatusHistoryRow, OnboardingRow,
+  WorkerTimesheetRow, PaySlipRow, PaymentRow, WarningEventRow,
+  WorkerFeedbackRow, DisputeRow, ReferralRow, PayoutRequestRow,
+  PartnerContactRow, WorkerEarningsSummaryRow, ReferralSummaryRow,
 } from '@/types'
 
 // ── Platforms ───────────────────────────────────────────────────
@@ -282,5 +285,451 @@ export async function updateOnboardingRow(
 export async function deleteOnboardingRow(rowId: string): Promise<{ error: string | null }> {
   const supabase = createClient()
   const { error } = await supabase.from('onboarding').delete().eq('id', rowId)
+  return { error: error?.message ?? null }
+}
+
+// ── Audit log ────────────────────────────────────────────────────
+// Shared by the Worker Recovery mutations below (warnings, disputes,
+// pay slips, payouts) so every state change is traceable to who did
+// it and when, matching the pattern already used in
+// app/api/admin/users/route.ts. Insert-only (RLS: "Any authed user
+// can insert audit"), so this can run from the browser client.
+
+async function logAudit(params: {
+  userId: string | null | undefined
+  action: string
+  entityType: string
+  entityId?: string | null
+  details?: Record<string, unknown>
+}): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase.from('audit_log').insert({
+    user_id: params.userId ?? null,
+    action: params.action,
+    entity_type: params.entityType,
+    entity_id: params.entityId ?? null,
+    details: params.details ?? {},
+  } as any)
+  if (error) console.error('logAudit:', error.message)
+}
+
+// ── Worker Recovery System ───────────────────────────────────────
+// Self-service worker portal, timesheets, pay slips, payments,
+// warnings, feedback, disputes, referrals, payouts, partner contacts.
+// See doc/Worker_Recovery_System_PRD.md.
+
+// -- Earnings summary (worker portal header) ------------------------
+
+export async function fetchWorkerEarningsSummary(
+  workerUserId: string
+): Promise<WorkerEarningsSummaryRow | null> {
+  const supabase = createClient()
+  const { data, error } = await (supabase as any)
+    .from('worker_earnings_summary').select('*').eq('worker_user_id', workerUserId).maybeSingle()
+  if (error) { console.error('fetchWorkerEarningsSummary:', error.message); return null }
+  return (data as WorkerEarningsSummaryRow) ?? null
+}
+
+/** Admin/manager overview — every worker's earnings + warning summary. */
+export async function fetchAllWorkerEarningsSummaries(): Promise<WorkerEarningsSummaryRow[]> {
+  const supabase = createClient()
+  const { data, error } = await (supabase as any)
+    .from('worker_earnings_summary').select('*').order('active_warnings', { ascending: false })
+  if (error) { console.error('fetchAllWorkerEarningsSummaries:', error.message); return [] }
+  return (data ?? []) as WorkerEarningsSummaryRow[]
+}
+
+// -- Timesheets -------------------------------------------------------
+
+export async function fetchTimesheets(workerUserId: string): Promise<WorkerTimesheetRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('worker_timesheets').select('*').eq('worker_user_id', workerUserId)
+    .order('work_date', { ascending: false })
+  if (error) { console.error('fetchTimesheets:', error.message); return [] }
+  return (data ?? []) as WorkerTimesheetRow[]
+}
+
+export async function logTimesheetHours(
+  entry: Omit<WorkerTimesheetRow, 'id' | 'created_at' | 'updated_at'>
+): Promise<{ id: string | null; error: string | null }> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('worker_timesheets').insert(entry as any).select('id').single()
+  return { id: (data as any)?.id ?? null, error: error?.message ?? null }
+}
+
+export async function deleteTimesheetEntry(id: string): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase.from('worker_timesheets').delete().eq('id', id)
+  return { error: error?.message ?? null }
+}
+
+// -- Pay slips & payments ---------------------------------------------
+
+export async function fetchPaySlips(workerUserId: string): Promise<PaySlipRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('pay_slips').select('*').eq('worker_user_id', workerUserId)
+    .order('period_year', { ascending: false })
+  if (error) { console.error('fetchPaySlips:', error.message); return [] }
+  return (data ?? []) as PaySlipRow[]
+}
+
+export async function issuePaySlip(
+  slip: Omit<PaySlipRow, 'id' | 'created_at' | 'updated_at' | 'issued_at'>
+): Promise<{ id: string | null; error: string | null }> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('pay_slips').insert(slip as any).select('id').single()
+  const id = (data as any)?.id ?? null
+  if (!error && id) {
+    await logAudit({
+      userId: slip.issued_by,
+      action: 'pay_slip_issued',
+      entityType: 'pay_slips',
+      entityId: id,
+      details: {
+        worker_user_id: slip.worker_user_id,
+        period_month: slip.period_month,
+        period_year: slip.period_year,
+        expected_amount_usd: slip.expected_amount_usd,
+        has_file: !!slip.slip_file_url,
+      },
+    })
+  }
+  return { id, error: error?.message ?? null }
+}
+
+/** Admin oversight — every pay slip issued, across all workers. */
+export async function fetchAllPaySlips(): Promise<PaySlipRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('pay_slips').select('*').order('created_at', { ascending: false })
+  if (error) { console.error('fetchAllPaySlips:', error.message); return [] }
+  return (data ?? []) as PaySlipRow[]
+}
+
+/**
+ * Uploads a pay slip document (PDF/image) to the private `pay-slips`
+ * storage bucket under `${workerUserId}/...` so RLS can scope worker
+ * read-access to their own folder. Returns the storage path (not a
+ * public URL — the bucket is private) to store in `slip_file_url`.
+ */
+export async function uploadPaySlipFile(
+  workerUserId: string, file: File
+): Promise<{ path: string | null; error: string | null }> {
+  const supabase = createClient()
+  const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_')
+  const path = `${workerUserId}/${Date.now()}-${safeName}`
+  const { error } = await supabase.storage.from('pay-slips').upload(path, file, { upsert: false })
+  return { path: error ? null : path, error: error?.message ?? null }
+}
+
+/** Short-lived signed URL to view/download a pay slip file (bucket is private). */
+export async function getPaySlipFileUrl(path: string): Promise<string | null> {
+  const supabase = createClient()
+  const { data, error } = await supabase.storage.from('pay-slips').createSignedUrl(path, 300)
+  if (error) { console.error('getPaySlipFileUrl:', error.message); return null }
+  return data?.signedUrl ?? null
+}
+
+export async function fetchPayments(workerUserId: string): Promise<PaymentRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('payments').select('*').eq('worker_user_id', workerUserId)
+    .order('created_at', { ascending: false })
+  if (error) { console.error('fetchPayments:', error.message); return [] }
+  return (data ?? []) as PaymentRow[]
+}
+
+/** Admin oversight — every payment across all workers (used to show
+ *  paid/unpaid status per pay slip on the Pay Slips page). */
+export async function fetchAllPayments(): Promise<PaymentRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('payments').select('*').order('created_at', { ascending: false })
+  if (error) { console.error('fetchAllPayments:', error.message); return [] }
+  return (data ?? []) as PaymentRow[]
+}
+
+/**
+ * Manual fallback for month-end salary settlement — records a
+ * `payments` row directly (no Paystack call). Used by the Pay Slips
+ * page when POST /api/payments/process degrades (Paystack not
+ * configured / no recipient code on file), so an admin settling
+ * off-platform can still mark a slip paid. See PRD §4.3 step 2.
+ */
+export async function recordPaySlipPayment(
+  entry: Pick<PaymentRow, 'worker_user_id' | 'pay_slip_id' | 'amount_usd' | 'status'>,
+  processedBy?: string
+): Promise<{ id: string | null; error: string | null }> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('payments')
+    .insert({
+      worker_user_id: entry.worker_user_id,
+      pay_slip_id: entry.pay_slip_id,
+      amount_usd: entry.amount_usd,
+      status: entry.status,
+      method: 'manual',
+      paid_at: entry.status === 'paid' ? new Date().toISOString() : null,
+    } as any)
+    .select('id').single()
+  const id = (data as any)?.id ?? null
+  if (!error && id) {
+    await logAudit({
+      userId: processedBy, action: 'payment_recorded', entityType: 'payments', entityId: id,
+      details: { worker_user_id: entry.worker_user_id, pay_slip_id: entry.pay_slip_id, amount_usd: entry.amount_usd, status: entry.status },
+    })
+  }
+  if (error?.code === '23505') {
+    return { id: null, error: 'This pay slip has already been paid.' }
+  }
+  return { id, error: error?.message ?? null }
+}
+
+// -- Warnings (progressive escalation, 5 = auto-termination) ---------
+
+export async function fetchWarnings(workerUserId: string): Promise<WarningEventRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('warning_events').select('*').eq('worker_user_id', workerUserId)
+    .order('created_at', { ascending: false })
+  if (error) { console.error('fetchWarnings:', error.message); return [] }
+  return (data ?? []) as WarningEventRow[]
+}
+
+export async function issueWarning(
+  workerUserId: string, reason: string, comment: string | undefined, issuedBy: string
+): Promise<{ id: string | null; error: string | null }> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('warning_events')
+    .insert({ worker_user_id: workerUserId, reason, comment: comment ?? null, issued_by: issuedBy } as any)
+    .select('id').single()
+  const id = (data as any)?.id ?? null
+  if (!error && id) {
+    await logAudit({
+      userId: issuedBy, action: 'warning_issued', entityType: 'warning_events', entityId: id,
+      details: { worker_user_id: workerUserId, reason },
+    })
+  }
+  return { id, error: error?.message ?? null }
+}
+
+export async function revokeWarning(id: string, revokedBy: string): Promise<{ error: string | null }> {
+  const supabase = createClient() as any
+  const { error } = await supabase
+    .from('warning_events')
+    .update({ is_revoked: true, revoked_at: new Date().toISOString(), revoked_by: revokedBy })
+    .eq('id', id)
+  if (!error) {
+    await logAudit({ userId: revokedBy, action: 'warning_revoked', entityType: 'warning_events', entityId: id })
+  }
+  return { error: error?.message ?? null }
+}
+
+// -- Feedback (admin-only visibility, workers see their own) ---------
+
+export async function fetchMyFeedback(workerUserId: string): Promise<WorkerFeedbackRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('worker_feedback').select('*').eq('worker_user_id', workerUserId)
+    .order('created_at', { ascending: false })
+  if (error) { console.error('fetchMyFeedback:', error.message); return [] }
+  return (data ?? []) as WorkerFeedbackRow[]
+}
+
+/** Admin inbox — every worker's feedback. Managers must never call this. */
+export async function fetchAllFeedback(): Promise<WorkerFeedbackRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('worker_feedback').select('*').order('created_at', { ascending: false })
+  if (error) { console.error('fetchAllFeedback:', error.message); return [] }
+  return (data ?? []) as WorkerFeedbackRow[]
+}
+
+export async function submitFeedback(
+  entry: Omit<WorkerFeedbackRow, 'id' | 'created_at'>
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase.from('worker_feedback').insert(entry as any)
+  return { error: error?.message ?? null }
+}
+
+// -- Disputes -----------------------------------------------------------
+
+export async function fetchMyDisputes(workerUserId: string): Promise<DisputeRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('disputes').select('*').eq('worker_user_id', workerUserId)
+    .order('created_at', { ascending: false })
+  if (error) { console.error('fetchMyDisputes:', error.message); return [] }
+  return (data ?? []) as DisputeRow[]
+}
+
+/** Manager/admin dispute queue — every open/in-review dispute. */
+export async function fetchAllDisputes(): Promise<DisputeRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('disputes').select('*').order('created_at', { ascending: false })
+  if (error) { console.error('fetchAllDisputes:', error.message); return [] }
+  return (data ?? []) as DisputeRow[]
+}
+
+export async function raiseDispute(
+  entry: Omit<DisputeRow, 'id' | 'created_at' | 'updated_at' | 'status' | 'resolution_notes' | 'resolved_by' | 'resolved_at'>
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { data, error } = await supabase.from('disputes').insert(entry as any).select('id').single()
+  const id = (data as any)?.id ?? null
+  if (!error && id) {
+    await logAudit({
+      userId: entry.worker_user_id, action: 'dispute_raised', entityType: 'disputes', entityId: id,
+      details: { subject: entry.subject },
+    })
+  }
+  return { error: error?.message ?? null }
+}
+
+export async function resolveDispute(
+  id: string, status: DisputeRow['status'], resolutionNotes: string | undefined, resolvedBy: string
+): Promise<{ error: string | null }> {
+  const supabase = createClient() as any
+  const { error } = await supabase
+    .from('disputes')
+    .update({
+      status,
+      resolution_notes: resolutionNotes ?? null,
+      resolved_by: resolvedBy,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (!error) {
+    await logAudit({ userId: resolvedBy, action: 'dispute_resolved', entityType: 'disputes', entityId: id, details: { status } })
+  }
+  return { error: error?.message ?? null }
+}
+
+// -- Referrals & payout gating -----------------------------------------
+
+export async function fetchReferralSummary(referrerUserId: string): Promise<ReferralSummaryRow | null> {
+  const supabase = createClient()
+  const { data, error } = await (supabase as any)
+    .from('referral_summary').select('*').eq('referrer_user_id', referrerUserId).maybeSingle()
+  if (error) { console.error('fetchReferralSummary:', error.message); return null }
+  return (data as ReferralSummaryRow) ?? null
+}
+
+export async function fetchReferrals(referrerUserId: string): Promise<ReferralRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('referrals').select('*').eq('referrer_user_id', referrerUserId)
+    .order('created_at', { ascending: false })
+  if (error) { console.error('fetchReferrals:', error.message); return [] }
+  return (data ?? []) as ReferralRow[]
+}
+
+/** Admin oversight — every referral across every referrer. */
+export async function fetchAllReferrals(): Promise<ReferralRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('referrals').select('*').order('created_at', { ascending: false })
+  if (error) { console.error('fetchAllReferrals:', error.message); return [] }
+  return (data ?? []) as ReferralRow[]
+}
+
+export async function addReferral(
+  entry: Omit<ReferralRow, 'id' | 'created_at' | 'updated_at' | 'status' | 'commission_usd'> & { commission_usd?: number }
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase.from('referrals').insert(entry as any)
+  return { error: error?.message ?? null }
+}
+
+export async function updateReferralStatus(
+  id: string, status: ReferralRow['status']
+): Promise<{ error: string | null }> {
+  const supabase = createClient() as any
+  const { error } = await supabase.from('referrals').update({ status }).eq('id', id)
+  return { error: error?.message ?? null }
+}
+
+// -- Payout requests (referral commission or worker early pay) --------
+
+export async function fetchMyPayoutRequests(requesterUserId: string): Promise<PayoutRequestRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('payout_requests').select('*').eq('requester_user_id', requesterUserId)
+    .order('requested_at', { ascending: false })
+  if (error) { console.error('fetchMyPayoutRequests:', error.message); return [] }
+  return (data ?? []) as PayoutRequestRow[]
+}
+
+/** Admin queue — every pending/approved payout request. */
+export async function fetchAllPayoutRequests(): Promise<PayoutRequestRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('payout_requests').select('*').order('requested_at', { ascending: false })
+  if (error) { console.error('fetchAllPayoutRequests:', error.message); return [] }
+  return (data ?? []) as PayoutRequestRow[]
+}
+
+/**
+ * Requests a payout. The `referral_commission` gating rule (every
+ * referred worker must already be paid) is enforced server-side by the
+ * `trg_payout_gating` trigger — this call surfaces that as a normal
+ * `{ error }` result rather than a thrown exception.
+ */
+export async function requestPayout(
+  entry: Pick<PayoutRequestRow, 'requester_user_id' | 'type' | 'amount_usd'> & { notes?: string | null }
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase.from('payout_requests').insert(entry as any)
+  return { error: error?.message ?? null }
+}
+
+export async function updatePayoutRequest(
+  id: string,
+  updates: Partial<Pick<PayoutRequestRow, 'status' | 'paystack_reference' | 'notes'>>,
+  processedBy?: string
+): Promise<{ error: string | null }> {
+  const supabase = createClient() as any
+  const { error } = await supabase
+    .from('payout_requests')
+    .update({ ...updates, processed_by: processedBy ?? null, processed_at: new Date().toISOString() })
+    .eq('id', id)
+  if (!error && processedBy) {
+    await logAudit({
+      userId: processedBy, action: `payout_${updates.status ?? 'updated'}`, entityType: 'payout_requests',
+      entityId: id, details: updates,
+    })
+  }
+  return { error: error?.message ?? null }
+}
+
+// -- Partner / contact records (Excel/CSV import target) --------------
+
+export async function fetchPartnerContacts(): Promise<PartnerContactRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('partner_contacts').select('*').order('created_at', { ascending: false })
+  if (error) { console.error('fetchPartnerContacts:', error.message); return [] }
+  return (data ?? []) as PartnerContactRow[]
+}
+
+export async function insertPartnerContact(
+  entry: Omit<PartnerContactRow, 'id' | 'created_at'>
+): Promise<{ id: string | null; error: string | null }> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('partner_contacts').insert(entry as any).select('id').single()
+  return { id: (data as any)?.id ?? null, error: error?.message ?? null }
+}
+
+export async function deletePartnerContact(id: string): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase.from('partner_contacts').delete().eq('id', id)
   return { error: error?.message ?? null }
 }

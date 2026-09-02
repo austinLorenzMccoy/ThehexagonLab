@@ -115,12 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasAccess = useCallback((channel: string): boolean => {
     if (!appUser) return false
     const accessMap: Record<UserRole, string[]> = {
-      admin:      ['dashboard', 'tracker', 'registry', 'onboarding', 'orders', 'payroll', 'reports', 'activity', 'audit', 'admin'],
+      admin:      ['dashboard', 'tracker', 'registry', 'onboarding', 'orders', 'payroll', 'reports', 'activity', 'audit', 'admin',
+                   'warnings', 'disputes', 'feedback', 'referrals', 'partners', 'pay-slips'],
       manager:    ['dashboard', 'tracker', 'registry', 'onboarding', 'payroll', 'reports',
+                   'warnings', 'disputes', 'partners',
                    ...(appUser.can_view_orders ? ['orders'] : [])],
       supervisor: ['dashboard', 'tracker', 'registry',
                    ...(appUser.can_view_orders ? ['orders'] : [])],
+      // Worker Recovery System — self-service portal only (own profile,
+      // timesheets, pay slips, warnings, feedback, disputes).
       worker:     ['dashboard'],
+      // Worker Recovery System — referral portal only.
+      referrer:   ['dashboard'],
     }
     return accessMap[appUser.role as UserRole]?.includes(channel) ?? false
   }, [appUser])

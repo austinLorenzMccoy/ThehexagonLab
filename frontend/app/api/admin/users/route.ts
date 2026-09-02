@@ -1,16 +1,9 @@
 import { createServerSupabaseClient, createAdminClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { encryptField } from '@/lib/crypto'
+import { assertAdmin } from '@/lib/api-admin-guard'
 
 export const dynamic = 'force-dynamic'
-
-async function assertAdmin(
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>
-) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabase.from('app_users').select('role').eq('id', user.id).single()
-  return (data as any)?.role === 'admin' ? user : null
-}
 
 // GET /api/admin/users — Returns list of all users (admin only)
 export async function GET() {
@@ -21,7 +14,14 @@ export async function GET() {
   const { data, error } = await createAdminClient()
     .from('app_users').select('*').order('created_at')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data)
+
+  // paystack_recipient_code is stored encrypted — never echo the ciphertext
+  // back to the browser. Callers only need to know whether one is on file.
+  const sanitized = (data ?? []).map((u: any) => ({
+    ...u,
+    paystack_recipient_code: u.paystack_recipient_code ? '••••••••' : null,
+  }))
+  return NextResponse.json(sanitized)
 }
 
 // PATCH /api/admin/users — Update a user's role, platform access, order visibility, or active status
@@ -30,10 +30,28 @@ export async function PATCH(request: NextRequest) {
   const adminUser = await assertAdmin(supabase)
   if (!adminUser) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
 
-  const { userId, role, platform_access, can_view_orders, worker_id, is_active } = await request.json()
+  const { userId, role, platform_access, can_view_orders, worker_id, is_active, paystack_recipient_code } = await request.json()
 
   if (!userId) {
     return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+  }
+
+  // Paystack recipient code only (no role change) — encrypted at rest.
+  if (paystack_recipient_code !== undefined && !role) {
+    const encoded = paystack_recipient_code ? encryptField(paystack_recipient_code) : null
+    const { error } = await (createAdminClient() as any)
+      .from('app_users').update({ paystack_recipient_code: encoded }).eq('id', userId)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    await createAdminClient().from('audit_log').insert({
+      user_id: adminUser.id,
+      action: 'set_payout_code',
+      entity_type: 'user',
+      entity_id: userId,
+      details: { has_code: !!paystack_recipient_code },
+    })
+
+    return NextResponse.json({ success: true })
   }
 
   // Deactivate/reactivate only (no role change)
@@ -71,6 +89,9 @@ export async function PATCH(request: NextRequest) {
     can_view_orders:  role === 'admin' ? true : (can_view_orders ?? false),
     ...(worker_id !== undefined ? { worker_id } : {}),
     ...(is_active !== undefined ? { is_active } : {}),
+    ...(paystack_recipient_code
+      ? { paystack_recipient_code: encryptField(paystack_recipient_code) }
+      : {}),
   }
 
   const { error } = await (createAdminClient() as any)

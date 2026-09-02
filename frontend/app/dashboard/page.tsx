@@ -11,20 +11,29 @@ import {
   WarningBreakdownChart,
   OrderStatusChart,
 } from '@/components/dashboard/charts'
+import { WorkerPortal } from '@/components/worker/worker-portal'
+import { ReferrerPortal } from '@/components/worker/referrer-portal'
 import type { PlatformStatsRow } from '@/types'
 import { Users, ShoppingCart, AlertTriangle, DollarSign, Loader2 } from 'lucide-react'
 
 export default function DashboardPage() {
-  const { hasAccess, isLoading: authLoading } = useAuth()
+  const { hasAccess, appUser, isLoading: authLoading } = useAuth()
   const [stats, setStats] = useState<PlatformStatsRow[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Worker Recovery System — `worker` and `referrer` land on their own
+  // self-service portal instead of the ops dashboard below. This keeps
+  // the existing admin/manager/supervisor dashboard route and behavior
+  // completely untouched.
+  const isSelfServiceRole = appUser?.role === 'worker' || appUser?.role === 'referrer'
+
   useEffect(() => {
+    if (isSelfServiceRole) { setLoading(false); return }
     fetchPlatformStats().then((data) => {
       setStats(data)
       setLoading(false)
     })
-  }, [])
+  }, [isSelfServiceRole])
 
   if (authLoading) {
     return (
@@ -37,6 +46,9 @@ export default function DashboardPage() {
   if (!hasAccess('dashboard')) {
     return <AccessDenied />
   }
+
+  if (appUser?.role === 'worker') return <WorkerPortal />
+  if (appUser?.role === 'referrer') return <ReferrerPortal />
 
   const totals = stats.reduce(
     (acc, p) => ({

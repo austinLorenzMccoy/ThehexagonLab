@@ -4,10 +4,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { AccessDenied } from '@/components/ui/access-denied'
 import { fetchPlatforms } from '@/lib/db'
+import { PlatformManager } from '@/components/admin/platform-manager'
 import type { UserRole, AppUser, Platform } from '@/types'
-import { Settings, Shield, Users, Loader2, Check, X, UserX, UserCheck, Trash2 } from 'lucide-react'
+import { Settings, Shield, Users, Loader2, Check, X, UserX, UserCheck, Trash2, Layers } from 'lucide-react'
 
-const ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'worker']
+type AdminTab = 'users' | 'platforms'
+
+const ROLES: UserRole[] = ['admin', 'manager', 'supervisor', 'worker', 'referrer']
 
 const rolePermissions: Record<UserRole, string[]> = {
   admin: [
@@ -18,6 +21,7 @@ const rolePermissions: Record<UserRole, string[]> = {
     'View Payroll',
     'Access Admin Panel',
     'Manage Roles',
+    'Add / Edit Platforms & task columns',
     'Export Data',
   ],
   manager: [
@@ -34,17 +38,23 @@ const rolePermissions: Record<UserRole, string[]> = {
     'View Registry (assigned)',
     'View Orders (if granted)',
   ],
-  worker: ['View Dashboard (own data only)'],
+  worker: ['View Dashboard (own data only)', 'Log Timesheets', 'View Pay Slips & Warnings', 'Submit Feedback / Disputes'],
+  referrer: ['View Referral Portal (own referrals only)', 'Request Gated Payout'],
 }
 
 interface EditState {
   role: UserRole
   platform_access: string[]
   can_view_orders: boolean
+  /** New Paystack recipient code to set. Blank means "leave unchanged" —
+   *  the existing value is never round-tripped to the browser (see
+   *  GET /api/admin/users, which masks it). */
+  paystack_recipient_code: string
 }
 
 export default function AdminPage() {
   const { hasRole, appUser, isLoading: authLoading } = useAuth()
+  const [tab, setTab] = useState<AdminTab>('users')
   const [users, setUsers] = useState<AppUser[]>([])
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,10 +71,16 @@ export default function AdminPage() {
     }
   }, [])
 
+  const loadPlatforms = useCallback(async () => {
+    // Active list for user platform-access chips; PlatformManager loads full list via API
+    const data = await fetchPlatforms()
+    setPlatforms(data)
+  }, [])
+
   useEffect(() => {
-    Promise.all([loadUsers(), fetchPlatforms().then(setPlatforms)])
+    Promise.all([loadUsers(), loadPlatforms()])
       .finally(() => setLoading(false))
-  }, [loadUsers])
+  }, [loadUsers, loadPlatforms])
 
   if (authLoading) {
     return (
@@ -83,6 +99,7 @@ export default function AdminPage() {
       role: user.role as UserRole,
       platform_access: user.platform_access ?? [],
       can_view_orders: user.can_view_orders,
+      paystack_recipient_code: '',
     })
     setMessage(null)
   }
@@ -90,6 +107,28 @@ export default function AdminPage() {
   const cancelEditing = () => {
     setEditingId(null)
     setEditState(null)
+  }
+
+  /** Explicit clear — separate from saveUser(), whose blank input means
+   *  "leave unchanged". This is the only way to remove a compromised or
+   *  wrong Paystack code, since GET never round-trips the real value. */
+  const clearPayoutCode = async (userId: string) => {
+    if (!window.confirm('Clear this Paystack payout code? The worker/referrer will need a new one before their next payout.')) return
+    setSaving(true)
+    setMessage(null)
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, paystack_recipient_code: null }),
+    })
+    const data = await res.json()
+    setSaving(false)
+    if (res.ok) {
+      setMessage({ type: 'success', text: 'Payout code cleared' })
+      loadUsers()
+    } else {
+      setMessage({ type: 'error', text: data.error || 'Failed to clear payout code' })
+    }
   }
 
   const saveUser = async (userId: string) => {
@@ -105,6 +144,9 @@ export default function AdminPage() {
         role: editState.role,
         platform_access: editState.role === 'admin' ? null : editState.platform_access,
         can_view_orders: editState.role === 'admin' ? true : editState.can_view_orders,
+        ...(editState.paystack_recipient_code
+          ? { paystack_recipient_code: editState.paystack_recipient_code }
+          : {}),
       }),
     })
 
@@ -214,11 +256,46 @@ export default function AdminPage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Control Tower</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage system roles, permissions, and user accounts
+          Manage roles, users, and AI training platforms — add new platforms without a code deploy
         </p>
       </div>
 
-      {message && (
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-2 border-b border-border-subtle pb-3">
+        <button
+          onClick={() => setTab('users')}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+            tab === 'users'
+              ? 'bg-ops text-white'
+              : 'border border-border-subtle text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <Users className="h-3.5 w-3.5" />
+          Users & Roles
+        </button>
+        <button
+          onClick={() => setTab('platforms')}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+            tab === 'platforms'
+              ? 'bg-ops text-white'
+              : 'border border-border-subtle text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <Layers className="h-3.5 w-3.5" />
+          Platforms
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+            tab === 'platforms' ? 'bg-white/20' : 'bg-muted'
+          }`}>
+            {platforms.length}
+          </span>
+        </button>
+      </div>
+
+      {tab === 'platforms' && (
+        <PlatformManager onPlatformsChanged={loadPlatforms} />
+      )}
+
+      {tab === 'users' && message && (
         <div className={`rounded-lg border p-3 text-sm ${
           message.type === 'success'
             ? 'border-green-500/20 bg-green-500/10 text-green-600 dark:text-green-400'
@@ -228,6 +305,7 @@ export default function AdminPage() {
         </div>
       )}
 
+      {tab === 'users' && (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Role overview */}
         <div className="space-y-4">
@@ -351,6 +429,37 @@ export default function AdminPage() {
                         />
                         <span className="text-xs text-foreground">Can view orders</span>
                       </label>
+
+                      {/* Paystack payout recipient code — workers/referrers only */}
+                      {(editState!.role === 'worker' || editState!.role === 'referrer') && (
+                        <div>
+                          <label className="text-xs font-medium text-foreground mb-1 block">
+                            Paystack Payout Code
+                          </label>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              value={editState!.paystack_recipient_code}
+                              onChange={(e) => setEditState({ ...editState!, paystack_recipient_code: e.target.value })}
+                              placeholder={user.paystack_recipient_code ? 'On file — enter to replace' : 'Not set — e.g. RCP_xxxxx'}
+                              className="flex-1 rounded-lg border border-border-subtle bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ops/50"
+                            />
+                            {user.paystack_recipient_code && (
+                              <button
+                                type="button"
+                                onClick={() => clearPayoutCode(user.id)}
+                                disabled={saving}
+                                className="shrink-0 rounded-lg border border-red-500/30 px-2.5 py-1 text-[10px] font-medium text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            Stored encrypted. Create this via Paystack&apos;s Create Transfer Recipient API for the worker&apos;s bank account.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -441,7 +550,9 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {tab === 'users' && (
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Settings className="h-5 w-5 text-ops" />
@@ -456,6 +567,9 @@ export default function AdminPage() {
           <div className="rounded-lg border border-border-subtle bg-card p-4">
             <p className="text-xs text-muted-foreground">Platforms</p>
             <p className="text-2xl font-bold text-foreground">{platforms.length}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Manage in the Platforms tab
+            </p>
           </div>
           <div className="rounded-lg border border-border-subtle bg-card p-4">
             <p className="text-xs text-muted-foreground">API Status</p>
@@ -463,6 +577,7 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'manager' | 'supervisor' | 'worker'
+export type UserRole = 'admin' | 'manager' | 'supervisor' | 'worker' | 'referrer'
 
 export interface AppUser {
   id: string
@@ -9,6 +9,16 @@ export interface AppUser {
   worker_id: string | null
   can_view_orders: boolean
   is_active: boolean
+  /** Worker Recovery System — contract lifecycle. Defaults to 'active';
+   *  auto-flips to 'terminated' once 5 active warnings accrue. Optional
+   *  so existing AppUser literals (tests) keep compiling. */
+  contract_status?: 'active' | 'terminated'
+  /** Worker Recovery System — set once a user becomes a referrer. */
+  referral_code?: string | null
+  /** Worker Recovery System — worker's rate used for timesheet earnings. */
+  hourly_rate_usd?: number | null
+  /** Worker Recovery System — Paystack transfer recipient code for payouts. */
+  paystack_recipient_code?: string | null
   last_sign_in: string | null
   created_at: string
   updated_at: string
@@ -166,6 +176,14 @@ export interface UserPermissions {
   canManageRoles: boolean
   canExport: boolean
   assignedPlatforms: string[] | null
+  // Worker Recovery System — additive, does not change any flag above.
+  isWorker: boolean
+  isReferrer: boolean
+  canManageWarnings: boolean
+  canManageDisputes: boolean
+  canViewFeedback: boolean
+  canManagePayouts: boolean
+  canManagePartnerContacts: boolean
 }
 
 export function getPermissions(user: AppUser): UserPermissions {
@@ -178,5 +196,175 @@ export function getPermissions(user: AppUser): UserPermissions {
     canManageRoles:      user.role === 'admin',
     canExport:           ['admin', 'manager'].includes(user.role),
     assignedPlatforms:   user.platform_access,
+    isWorker:                 user.role === 'worker',
+    isReferrer:               user.role === 'referrer',
+    canManageWarnings:        ['admin', 'manager'].includes(user.role),
+    canManageDisputes:        ['admin', 'manager'].includes(user.role),
+    canViewFeedback:          user.role === 'admin',
+    canManagePayouts:         user.role === 'admin',
+    canManagePartnerContacts: ['admin', 'manager'].includes(user.role),
   }
+}
+
+// ── Worker Recovery System types ───────────────────────────────────
+
+export type ContractStatus = 'active' | 'terminated'
+
+export interface WorkerTimesheetRow {
+  id: string
+  worker_user_id: string
+  platform_id: number | null
+  work_date: string
+  hours_worked: number
+  hourly_rate_usd: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type PaySlipMonth =
+  | 'January' | 'February' | 'March' | 'April' | 'May' | 'June'
+  | 'July' | 'August' | 'September' | 'October' | 'November' | 'December'
+
+export interface PaySlipRow {
+  id: string
+  worker_user_id: string
+  platform_id: number | null
+  period_month: PaySlipMonth
+  period_year: number
+  expected_amount_usd: number
+  currency: string
+  slip_file_url: string | null
+  issued_by: string | null
+  issued_at: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type PaymentStatus = 'pending' | 'processing' | 'paid' | 'failed'
+
+export interface PaymentRow {
+  id: string
+  worker_user_id: string
+  pay_slip_id: string | null
+  amount_usd: number
+  status: PaymentStatus
+  method: string
+  paystack_reference: string | null
+  paid_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WarningEventRow {
+  id: string
+  worker_user_id: string
+  issued_by: string | null
+  reason: string
+  comment: string | null
+  is_revoked: boolean
+  revoked_by: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
+export type FeedbackCategory = 'manager' | 'process' | 'platform' | 'other'
+
+export interface WorkerFeedbackRow {
+  id: string
+  worker_user_id: string
+  category: FeedbackCategory
+  subject: string
+  message: string
+  created_at: string
+}
+
+export type DisputeStatus = 'open' | 'in_review' | 'resolved' | 'rejected'
+
+export interface DisputeRow {
+  id: string
+  worker_user_id: string
+  pay_slip_id: string | null
+  subject: string
+  description: string
+  status: DisputeStatus
+  resolution_notes: string | null
+  resolved_by: string | null
+  resolved_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ReferralStatus = 'pending' | 'active' | 'paid'
+
+export interface ReferralRow {
+  id: string
+  referrer_user_id: string
+  referred_worker_user_id: string | null
+  referred_name: string
+  referred_email: string | null
+  status: ReferralStatus
+  commission_usd: number
+  created_at: string
+  updated_at: string
+}
+
+export type PayoutType = 'referral_commission' | 'worker_early_pay'
+export type PayoutStatus = 'pending' | 'approved' | 'rejected' | 'paid'
+
+export interface PayoutRequestRow {
+  id: string
+  requester_user_id: string
+  type: PayoutType
+  amount_usd: number
+  status: PayoutStatus
+  paystack_reference: string | null
+  notes: string | null
+  requested_at: string
+  processed_by: string | null
+  processed_at: string | null
+}
+
+export type PartnerContactType = 'worker' | 'referrer' | 'partner'
+
+export interface PartnerContactRow {
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+  country: string | null
+  contact_type: PartnerContactType
+  source: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export interface WorkerEarningsSummaryRow {
+  worker_user_id: string
+  display_name: string | null
+  email: string
+  contract_status: ContractStatus
+  month_hours: number
+  month_earnings_usd: number
+  total_paid_usd: number
+  pending_usd: number
+  active_warnings: number
+  latest_expected_amount_usd: number | null
+  latest_period_month: PaySlipMonth | null
+  latest_period_year: number | null
+}
+
+export interface ReferralSummaryRow {
+  referrer_user_id: string
+  display_name: string | null
+  email: string
+  referral_code: string | null
+  total_referred: number
+  paid_count: number
+  pending_count: number
+  active_count: number
+  total_commission_usd: number
+  eligible_for_payout: boolean
 }

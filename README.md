@@ -263,6 +263,22 @@ PostgreSQL Functions & Triggers
 
 ---
 
+## 🧑‍💼 Worker Recovery System
+
+Implements [doc/Worker_Recovery_System_PRD.md](doc/Worker_Recovery_System_PRD.md) as an additive Phase 2 layer on top of the core schema above — see [`backend/supabase/migrations/split/part9_worker_recovery.sql`](backend/supabase/migrations/split/part9_worker_recovery.sql). Nothing here changes an existing table, policy, route, or piece of Hexagon LABS' own dark/monochrome UI — new pages reuse the existing `bg-ops` / `text-ops` / `border-border-subtle` tokens so they inherit the theme automatically.
+
+- **5th role — `referrer`**: self-service referral portal only (`/dashboard` branches by role instead of adding new protected routes for `worker`/`referrer`).
+- **New tables**: `worker_timesheets`, `pay_slips`, `payments`, `warning_events`, `worker_feedback`, `disputes`, `referrals`, `payout_requests`, `partner_contacts` — all keyed to `app_users.id` and RLS-scoped so a worker/referrer only ever sees their own rows; admins/managers see everything their role is entitled to (feedback stays admin-only, never manager-visible, per the PRD).
+- **Warning escalation**: 5 active `warning_events` for a worker auto-sets `app_users.contract_status = 'terminated'` via trigger; revoking a warning back under 5 reinstates it.
+- **Referral payout gating**: `referrer_payout_eligible()` and the `trg_payout_gating` trigger block a `referral_commission` payout request at the database layer until every one of that referrer's `referrals` rows is `'paid'`.
+- **New pages**: `/warnings` (issue/revoke warnings + per-worker dispute history, admin/manager), `/feedback` (admin-only inbox), `/referrals` (admin oversight + payout approval), `/partners` (contact database with bulk CSV/Excel import), `/pay-slips` (admin-only: issue a pay slip with an optional file upload, then settle it at month-end) — added to `SignalNav`'s existing collapsible-sidebar list.
+- **Paystack**: `lib/paystack.ts` + `POST /api/payouts/process` (referral commissions / worker early pay) + `POST /api/payments/process` (month-end salary from an issued pay slip) settle via Paystack Transfer when `PAYSTACK_SECRET_KEY` and a recipient's `paystack_recipient_code` are set; otherwise both degrade to "settle manually, mark Paid" so admins are never blocked on missing keys — and both guard against double-processing the same record.
+- **Audit trail**: every warning, dispute, pay-slip, and payout mutation writes to `audit_log` via a shared `logAudit()` helper, visible on `/audit`.
+- **Encryption**: `paystack_recipient_code` is encrypted at rest (AES-256-GCM), set/cleared from Control Tower, never echoed back to the browser.
+- **Platform admin**: Control Tower's new Platforms tab (`components/admin/platform-manager.tsx` + `/api/admin/platforms(/columns)`) lets an admin add/edit AI training platforms and their tracker task columns without a code deploy.
+
+---
+
 ## 🔌 API Routes
 
 | Method | Endpoint | Auth | Description |

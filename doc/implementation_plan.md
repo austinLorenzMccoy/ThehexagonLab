@@ -91,6 +91,37 @@ Endpoint for updating JSONB task_statuses.
 
 ---
 
+### 3. Additional Workstream: Worker Recovery & Workforce Management Platform
+
+The document [doc/Worker_Recovery_System_PRD.md](Worker_Recovery_System_PRD.md) should be treated as an additional implementation stream that extends the core Hexagon LABS system rather than as a separate product. The recovery system adds worker-facing accountability, payroll transparency, referral tracking, and dispute management on top of the existing platform operations.
+
+#### Scope
+- Worker profiles with daily dashboard, work history, earnings summary, and payment status
+- Timesheet logging and daily earnings visibility
+- Pay slip uploads, expected payments, and month-end reconciliation
+- Warning lifecycle management with progressive escalation and automatic contract termination after five warnings
+- Feedback and dispute workflows with role-based visibility rules
+- Manager dashboard with assignment filters, warning status, dispute queues, and comments history
+- Referral portal with earnings tracking, payout gating, and tiered leaderboard concepts
+- Partner/contact records for future outreach and bulk import via Excel/CSV
+- Paystack integration for payout processing and account reconciliation
+
+#### Implementation status
+
+Landed as an additive layer — no existing table, RLS policy, route, page, or piece of Hexagon LABS' own frontend styling was changed:
+
+- **Schema**: `backend/supabase/migrations/split/part9_worker_recovery.sql` (mirrored to `20260902000000_worker_recovery.sql`) adds the `referrer` role, `worker_timesheets`, `pay_slips`, `payments`, `warning_events`, `worker_feedback`, `disputes`, `referrals`, `payout_requests`, `partner_contacts`, warning-escalation triggers, and referral payout gating. Run it after `20260612000000_init.sql` (parts 1-8, which now includes `part8_platform_admin.sql`).
+- **Types**: `frontend/types/{index,database}.ts` extended additively (new fields are optional on `AppUser` so existing code still compiles).
+- **Data access**: `frontend/lib/db.ts` gained a Worker Recovery System section following this file's existing plain query pattern (no demo-data layer, matching how the rest of `db.ts` is written here). A shared `logAudit()` helper records every warning/dispute/pay-slip/payout mutation to `audit_log`.
+- **UI**: `/dashboard` branches by role (`WorkerPortal` / `ReferrerPortal` components) instead of touching the existing ops dashboard route; new pages `/warnings` (now with per-worker dispute history, not just a global queue), `/feedback`, `/referrals`, `/partners` (bulk CSV/Excel import wired via the shared `ImportDialog`), and `/pay-slips` (admin-only pay-slip issuance + month-end "Mark Paid" settlement) for admin/manager, all added to `SignalNav`'s existing collapsible-sidebar pattern. All new UI reuses the app's existing `bg-ops` / `text-ops` / `border-border-subtle` tokens, so it inherits the monochrome dark theme automatically — no new colors or components were introduced.
+- **Payouts & payments**: `frontend/lib/paystack.ts` + `POST /api/payouts/process` (referral commissions / worker early pay) and `POST /api/payments/process` (month-end salary settlement from an issued pay slip), both gracefully degrading to manual settlement when `PAYSTACK_SECRET_KEY` isn't configured, and both guarding against double-processing the same record.
+- **Platform admin**: `backend/supabase/migrations/split/part8_platform_admin.sql` + `components/admin/platform-manager.tsx` + `/api/admin/platforms(/columns)` let an admin add/edit AI training platforms and their tracker task columns from the Control Tower, without a code deploy.
+- **Security**: `paystack_recipient_code` is encrypted at rest (AES-256-GCM via `lib/crypto.ts`), never echoed back to the browser as ciphertext, and can be set or explicitly cleared from Control Tower.
+- **Verified**: `npx tsc --noEmit`, `npx vitest run` (same 120/145 passing as the pre-existing baseline — the 25 failures are pre-existing in this repo, unrelated to this change), and `npm run build` all succeed.
+- **Not yet built**: Slack/email delivery for warning escalations, and a UI flow for collecting real bank details to create a Paystack transfer recipient (admins currently paste an already-created `paystack_recipient_code`).
+
+---
+
 ## Verification Plan
 
 ### Automated Tests

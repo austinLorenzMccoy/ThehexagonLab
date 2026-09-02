@@ -328,4 +328,17 @@ export const IMPORT_CONFIGS: Record<string, Omit<ImportConfig, 'platformId'>> = 
       'Notes': 'notes',
     },
   },
+  partner_contacts: {
+    table: 'partner_contacts',
+    requiredColumns: ['name'],
+    columnMap: {
+      'Name': 'name',
+      'Email': 'email',
+      'Phone': 'phone',
+      'Country': 'country',
+      'Type': 'contact_type',
+      'Source': 'source',
+      'Notes': 'notes',
+    },
+  },
 }
