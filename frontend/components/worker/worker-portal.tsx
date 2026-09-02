@@ -15,10 +15,13 @@ import {
   fetchMyDisputes,
   raiseDispute,
   getPaySlipFileUrl,
+  fetchMyTimesheetEarnings,
+  fetchMyEffectiveHourlyRate,
 } from '@/lib/db'
 import type {
   WorkerEarningsSummaryRow, WorkerTimesheetRow, PaySlipRow, PaymentRow,
   WarningEventRow, WorkerFeedbackRow, DisputeRow, FeedbackCategory,
+  WorkerTimesheetEarningsRow,
 } from '@/types'
 import { Loader2, Clock, DollarSign, AlertTriangle, MessageSquare, Gavel, Plus } from 'lucide-react'
 
@@ -35,6 +38,7 @@ export function WorkerPortal() {
 
   const [summary, setSummary] = useState<WorkerEarningsSummaryRow | null>(null)
   const [timesheets, setTimesheets] = useState<WorkerTimesheetRow[]>([])
+  const [timesheetEarnings, setTimesheetEarnings] = useState<WorkerTimesheetEarningsRow[]>([])
   const [paySlips, setPaySlips] = useState<PaySlipRow[]>([])
   const [payments, setPayments] = useState<PaymentRow[]>([])
   const [warnings, setWarnings] = useState<WarningEventRow[]>([])
@@ -42,19 +46,22 @@ export function WorkerPortal() {
   const [disputes, setDisputes] = useState<DisputeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [logging, setLogging] = useState(false)
+  const [effectiveRate, setEffectiveRate] = useState(0)
 
   const load = useCallback(async () => {
-    const [s, ts, ps, pay, w, fb, d] = await Promise.all([
+    const [s, ts, te, ps, pay, w, fb, d, er] = await Promise.all([
       fetchWorkerEarningsSummary(workerId),
       fetchTimesheets(workerId),
+      fetchMyTimesheetEarnings(),
       fetchPaySlips(workerId),
       fetchPayments(workerId),
       fetchWarnings(workerId),
       fetchMyFeedback(workerId),
       fetchMyDisputes(workerId),
+      fetchMyEffectiveHourlyRate(),
     ])
-    setSummary(s); setTimesheets(ts); setPaySlips(ps); setPayments(pay)
-    setWarnings(w); setFeedback(fb); setDisputes(d)
+    setSummary(s); setTimesheets(ts); setTimesheetEarnings(te); setPaySlips(ps); setPayments(pay)
+    setWarnings(w); setFeedback(fb); setDisputes(d); setEffectiveRate(er)
     setLoading(false)
   }, [workerId])
 
@@ -62,6 +69,9 @@ export function WorkerPortal() {
 
   const activeWarnings = warnings.filter((w) => !w.is_revoked)
   const contractStatus = summary?.contract_status ?? appUser?.contract_status ?? 'active'
+  // Raw nominal rate — stored as-is on each timesheet row (admin needs
+  // the true gross figure for the Pay Slips split calculator). Never
+  // shown to the worker directly; see effectiveRate for that.
   const rate = appUser?.hourly_rate_usd ?? 0
 
   const handleLogHours = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -79,7 +89,7 @@ export function WorkerPortal() {
     })
     setLogging(false)
     if (error) { toast(`Could not log hours: ${error}`, 'error'); return }
-    toast(`Logged ${hours}h — $${(hours * rate).toFixed(2)} for the day`, 'success')
+    toast(`Logged ${hours}h — $${(hours * effectiveRate).toFixed(2)} for the day`, 'success')
     ;(e.target as HTMLFormElement).reset()
     load()
   }
@@ -219,7 +229,7 @@ export function WorkerPortal() {
               className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm sm:col-span-2" />
             <button type="submit" disabled={logging || !rate}
               className="flex items-center justify-center gap-2 rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-50 sm:col-span-2">
-              <Plus className="h-4 w-4" /> {logging ? 'Logging…' : `Log at $${rate}/hr`}
+              <Plus className="h-4 w-4" /> {logging ? 'Logging…' : `Log at $${effectiveRate}/hr`}
             </button>
           </form>
           {!rate && (
@@ -230,12 +240,15 @@ export function WorkerPortal() {
           <div className="space-y-2 max-h-48 overflow-y-auto">
             {timesheets.length === 0 ? (
               <p className="text-xs text-muted-foreground py-4 text-center">No hours logged yet</p>
-            ) : timesheets.map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded bg-background/50 px-3 py-2 text-xs">
-                <span>{new Date(t.work_date).toLocaleDateString()} — {t.hours_worked}h</span>
-                <span className="font-semibold text-foreground">${(t.hours_worked * t.hourly_rate_usd).toFixed(2)}</span>
-              </div>
-            ))}
+            ) : timesheets.map((t) => {
+              const earnings = timesheetEarnings.find((e) => e.id === t.id)?.earnings_usd ?? 0
+              return (
+                <div key={t.id} className="flex items-center justify-between rounded bg-background/50 px-3 py-2 text-xs">
+                  <span>{new Date(t.work_date).toLocaleDateString()} — {t.hours_worked}h</span>
+                  <span className="font-semibold text-foreground">${earnings.toFixed(2)}</span>
+                </div>
+              )
+            })}
           </div>
           <p className="mt-2 text-[10px] text-muted-foreground">
             Logged hours are a secondary reference — your official pay slip is the primary payment source.

@@ -225,6 +225,17 @@ export interface WorkerTimesheetRow {
   updated_at: string
 }
 
+/** A worker's own timesheet entry with earnings already split-adjusted
+ *  server-side (via my_timesheet_earnings()) — never the raw nominal
+ *  rate, never the percentage itself. See PART 14 migration. */
+export interface WorkerTimesheetEarningsRow {
+  id: string
+  work_date: string
+  hours_worked: number
+  notes: string | null
+  earnings_usd: number
+}
+
 export type PaySlipMonth =
   | 'January' | 'February' | 'March' | 'April' | 'May' | 'June'
   | 'July' | 'August' | 'September' | 'October' | 'November' | 'December'

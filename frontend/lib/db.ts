@@ -12,6 +12,7 @@ import type {
   WorkerFeedbackRow, DisputeRow, ReferralRow, PayoutRequestRow,
   PartnerContactRow, WorkerEarningsSummaryRow, ReferralSummaryRow,
   PlatformRevenueSplit, WorkerRevenueOverride, ReferralRevenueOverride, ResolvedRevenueSplit,
+  WorkerTimesheetEarningsRow,
 } from '@/types'
 
 // ── Platforms ───────────────────────────────────────────────────
@@ -364,6 +365,34 @@ export async function deleteTimesheetEntry(id: string): Promise<{ error: string 
   const supabase = createClient()
   const { error } = await supabase.from('worker_timesheets').delete().eq('id', id)
   return { error: error?.message ?? null }
+}
+
+/**
+ * The calling worker's own timesheet entries with earnings already
+ * split-adjusted (hours x rate x their worker %, resolved server-side
+ * — see my_timesheet_earnings() in the PART 14 migration). Replaces
+ * the old client-side `hours_worked * hourly_rate_usd` math, which
+ * always showed the full nominal rate regardless of any configured
+ * split. Never exposes the percentage itself, only the dollar result.
+ */
+export async function fetchMyTimesheetEarnings(): Promise<WorkerTimesheetEarningsRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('my_timesheet_earnings')
+  if (error) { console.error('fetchMyTimesheetEarnings:', error.message); return [] }
+  return (data ?? []) as WorkerTimesheetEarningsRow[]
+}
+
+/**
+ * The calling worker's own effective hourly rate, after their split
+ * (falls back to their full nominal rate if no split is configured).
+ * Used for "Log at $X/hr" instead of the raw hourly_rate_usd, so the
+ * worker is never shown a rate that isn't actually their take-home.
+ */
+export async function fetchMyEffectiveHourlyRate(): Promise<number> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('my_effective_hourly_rate')
+  if (error) { console.error('fetchMyEffectiveHourlyRate:', error.message); return 0 }
+  return (data as number) ?? 0
 }
 
 // -- Pay slips & payments ---------------------------------------------
