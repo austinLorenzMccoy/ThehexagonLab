@@ -58,14 +58,13 @@ export type GeoworkStatus =
 export type AccountType =
   | 'Full-Time' | 'Part-Time' | 'Contractor' | 'Intern' | 'Freelance'
 
-export type LinkerType =
-  | 'Linker A' | 'Linker B' | 'Linker C' | 'Linker D' | 'Self'
-
 export interface WorkerTrackerRow {
   id: string
   platform_id: number
   owner_name: string
-  linker: LinkerType
+  /** The manager this worker's tracker row is assigned to — a real
+   *  app_users.id (role = 'manager'), or null if unassigned. */
+  manager_id: string | null
   worker_name: string
   email: string | null
   apple_connect_pw: string | null

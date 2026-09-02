@@ -267,7 +267,6 @@ export const IMPORT_CONFIGS: Record<string, Omit<ImportConfig, 'platformId'>> = 
       'Owner Name': 'owner_name',
       'Worker Name': 'worker_name',
       'Email': 'email',
-      'Linker': 'linker',
       'Warning': 'warning_level',
       'Payoneer': 'payoneer_linked',
       'SOW': 'sow_done',

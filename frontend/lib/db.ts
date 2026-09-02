@@ -47,7 +47,7 @@ export async function fetchPlatformStats(): Promise<PlatformStatsRow[]> {
 
 export async function fetchTrackerByPlatform(
   platformSlug: string,
-  filters?: { warningLevel?: string; linker?: string; search?: string }
+  filters?: { warningLevel?: string; managerId?: string; search?: string }
 ): Promise<WorkerTrackerRow[]> {
   const supabase = createClient()
   let query = (supabase as any)
@@ -57,7 +57,7 @@ export async function fetchTrackerByPlatform(
     .order('created_at')
 
   if (filters?.warningLevel) query = query.eq('warning_level', filters.warningLevel)
-  if (filters?.linker)       query = query.eq('linker', filters.linker)
+  if (filters?.managerId)    query = query.eq('manager_id', filters.managerId)
   if (filters?.search) {
     query = query.or(
       `worker_name.ilike.%${filters.search}%,owner_name.ilike.%${filters.search}%`
@@ -70,11 +70,11 @@ export async function fetchTrackerByPlatform(
 }
 
 export async function updateTrackerField(
-  rowId: string, field: string, value: string
+  rowId: string, field: string, value: string | null
 ): Promise<{ error: string | null }> {
   const supabase = createClient() as any
   const { error } = await supabase
-    .from('worker_tracker').update({ [field]: value }).eq('id', rowId)
+    .from('worker_tracker').update({ [field]: value || null }).eq('id', rowId)
   return { error: error?.message ?? null }
 }
 

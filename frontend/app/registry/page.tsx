@@ -138,7 +138,9 @@ export default function RegistryPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Field Roster</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Worker registration records across platforms
+            The roster: who is registered to work on each platform, their employment type, and
+            whether they have passed onboarding checks. Set once when someone joins — for
+            day-to-day task status, see the Tracker instead.
           </p>
         </div>
         <button

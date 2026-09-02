@@ -136,9 +136,9 @@ describe('fetchTrackerByPlatform', () => {
     expect(mockSupabase.from).toHaveBeenCalledWith('worker_tracker')
   })
 
-  it('applies linker filter', async () => {
+  it('applies manager filter', async () => {
     mockResponse = { data: [], error: null }
-    await fetchTrackerByPlatform('oneforma', { linker: 'Linker A' })
+    await fetchTrackerByPlatform('oneforma', { managerId: 'mgr-001' })
     expect(mockSupabase.from).toHaveBeenCalledWith('worker_tracker')
   })
 

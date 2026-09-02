@@ -10,8 +10,9 @@ import {
   fetchPlatformTaskColumns,
   updateTrackerField,
   updateTaskStatus,
+  fetchAllUsers,
 } from '@/lib/db'
-import type { Platform, WorkerTrackerRow, PlatformTaskColumn, WarningLevel, YNStatus } from '@/types'
+import type { Platform, WorkerTrackerRow, PlatformTaskColumn, WarningLevel, YNStatus, AppUser } from '@/types'
 import { Download, Upload, Loader2 } from 'lucide-react'
 import { ImportDialog, IMPORT_CONFIGS } from '@/components/import/import-dialog'
 
@@ -24,6 +25,7 @@ export default function TrackerPage() {
   const [selectedPlatform, setSelectedPlatform] = useState<string>('')
   const [workers, setWorkers] = useState<WorkerTrackerRow[]>([])
   const [taskColumns, setTaskColumns] = useState<PlatformTaskColumn[]>([])
+  const [managers, setManagers] = useState<AppUser[]>([])
   const [loading, setLoading] = useState(true)
   const [tableLoading, setTableLoading] = useState(false)
   const [showImport, setShowImport] = useState(false)
@@ -33,6 +35,9 @@ export default function TrackerPage() {
       setPlatforms(data)
       if (data.length > 0) setSelectedPlatform(data[0].slug)
       setLoading(false)
+    })
+    fetchAllUsers().then((users) => {
+      setManagers(users.filter((u) => u.role === 'manager'))
     })
   }, [])
 
@@ -105,7 +110,8 @@ export default function TrackerPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Signal Grid</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Worker task status tracking across platforms
+            The day-to-day board: where each worker stands right now — task progress, warning
+            status, and which manager is handling them. Update this as work happens.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -166,7 +172,7 @@ export default function TrackerPage() {
               <tr>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Worker</th>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Owner</th>
-                <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Linker</th>
+                <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Manager</th>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Warning</th>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Payoneer</th>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">SOW</th>
@@ -190,7 +196,18 @@ export default function TrackerPage() {
                     </div>
                   </td>
                   <td className="px-3 py-2 text-xs text-foreground">{worker.owner_name}</td>
-                  <td className="px-3 py-2 text-xs text-foreground">{worker.linker}</td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={worker.manager_id ?? ''}
+                      onChange={(e) => handleFieldUpdate(worker.id, 'manager_id', e.target.value)}
+                      className="rounded bg-transparent border border-border-subtle px-1 py-0.5 text-xs w-28"
+                    >
+                      <option value="">Unassigned</option>
+                      {managers.map((m) => (
+                        <option key={m.id} value={m.id}>{m.display_name ?? m.email}</option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="px-3 py-2">
                     <select
                       value={worker.warning_level}

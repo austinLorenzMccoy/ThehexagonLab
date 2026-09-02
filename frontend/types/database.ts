@@ -122,7 +122,7 @@ export interface Database {
           id: string
           platform_id: number
           owner_name: string
-          linker: string
+          manager_id: string | null
           worker_name: string
           email: string | null
           apple_connect_pw: string | null
@@ -140,7 +140,7 @@ export interface Database {
           id?: string
           platform_id: number
           owner_name: string
-          linker: string
+          manager_id?: string | null
           worker_name: string
           email?: string | null
           apple_connect_pw?: string | null
@@ -158,7 +158,7 @@ export interface Database {
           id?: string
           platform_id?: number
           owner_name?: string
-          linker?: string
+          manager_id?: string | null
           worker_name?: string
           email?: string | null
           apple_connect_pw?: string | null
