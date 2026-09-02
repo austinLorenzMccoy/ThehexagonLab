@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, Shield, BarChart3, Users, Zap, Globe, Lock, Hexagon } from 'lucide-react'
+import { ArrowRight, Shield, BarChart3, Users, Zap, Globe, Lock } from 'lucide-react'
 
 export default function LandingPage() {
   return (
@@ -20,10 +20,7 @@ export default function LandingPage() {
         {/* Nav */}
         <nav className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-5 lg:px-12">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center shadow-lg shadow-white/10">
-              <Hexagon className="h-4.5 w-4.5 text-black" />
-            </div>
-            <span className="text-lg font-bold tracking-tight">Hexagon LABS</span>
+            <img src="/logo-full.png" alt="TheHexagon Labs" className="h-8 w-auto" />
           </div>
           <Link
             href="/login"
@@ -218,10 +215,7 @@ export default function LandingPage() {
       <footer className="border-t border-white/[0.04] py-8 px-6 lg:px-12">
         <div className="mx-auto max-w-7xl flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="h-7 w-7 rounded-lg bg-white flex items-center justify-center">
-              <Hexagon className="h-3.5 w-3.5 text-black" />
-            </div>
-            <span className="text-sm font-medium text-gray-400">Hexagon LABS</span>
+            <img src="/logo-full.png" alt="TheHexagon Labs" className="h-6 w-auto opacity-80" />
           </div>
           <p className="text-xs text-gray-600">
             © {new Date().getFullYear()} The Hexagon LABS. All rights reserved.

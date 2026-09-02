@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import { ArrowLeft, Zap } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 function LoginContent() {
   const router = useRouter()
@@ -74,16 +74,11 @@ function LoginContent() {
 
         <div className="rounded-xl border border-slate-700/50 bg-slate-900/80 backdrop-blur p-8 shadow-2xl">
           {/* Logo + Title */}
-          <div className="mb-8 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center">
-              <Zap className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Hexagon LABS</h1>
-              <p className="text-xs text-slate-400">
-                Intelligence Control Room
-              </p>
-            </div>
+          <div className="mb-8">
+            <img src="/logo-full.png" alt="TheHexagon Labs" className="h-9 w-auto" />
+            <p className="mt-2 text-xs text-slate-400">
+              Intelligence Control Room
+            </p>
           </div>
 
           {isDemo && (

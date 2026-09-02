@@ -611,6 +611,30 @@ create trigger worker_tracker_history
   after update on public.worker_tracker
   for each row execute function public.handle_task_status_update();
 
+-- 3b. App-level config (replaces `alter database ... set app.*`, which
+-- fails on hosted Supabase because the SQL-editor role does not own the
+-- `postgres` database). Never store real secret values in this migration
+-- file — seed placeholders here and update them via the dashboard/Table
+-- editor after deploying, or via `supabase secrets`/Vault.
+create table public.app_config (
+  key   text primary key,
+  value text not null
+);
+
+alter table public.app_config enable row level security;
+
+create policy "app_config_select_admin" on public.app_config for select
+  using (public.get_my_role() = 'admin');
+
+create or replace function public.get_app_config(p_key text)
+returns text language sql stable security definer set search_path = public as $$
+  select value from public.app_config where key = p_key limit 1;
+$$;
+
+insert into public.app_config (key, value) values
+  ('supabase_url',     'http://kong:54321'),
+  ('service_role_key', '');
+
 -- 4. Notify Edge Function when warning escalates to Serious/Banned
 create or replace function public.notify_warning_escalation()
 returns trigger language plpgsql security definer
@@ -621,10 +645,10 @@ begin
           or old.warning_level not in ('🔴 Serious','⚫ Banned'))
   then
     perform net.http_post(
-      url     := current_setting('app.supabase_url') || '/functions/v1/notify-warning',
+      url     := public.get_app_config('supabase_url') || '/functions/v1/notify-warning',
       headers := jsonb_build_object(
         'Content-Type',  'application/json',
-        'Authorization', 'Bearer ' || current_setting('app.service_role_key')
+        'Authorization', 'Bearer ' || public.get_app_config('service_role_key')
       ),
       body := jsonb_build_object(
         'tracker_row_id', new.id,
@@ -673,23 +697,15 @@ select cron.schedule(
   '0 8 * * *',
   $$
     select net.http_post(
-      url     := current_setting('app.supabase_url') || '/functions/v1/daily-summary',
+      url     := public.get_app_config('supabase_url') || '/functions/v1/daily-summary',
       headers := jsonb_build_object(
-        'Authorization', 'Bearer ' || current_setting('app.service_role_key'),
+        'Authorization', 'Bearer ' || public.get_app_config('service_role_key'),
         'Content-Type',  'application/json'
       ),
       body := '{}'
     );
   $$
 );
-
--- ── 15. Set DB-level settings placeholder ─────────────────────────
--- Note: Replace these using actual values during local/production deployment
-alter database postgres
-  set app.supabase_url = 'http://kong:54321';
-
-alter database postgres
-  set app.service_role_key = 'eyJ...';
 
 -- ── 16. Enable real-time for tracker and orders tables ────────────
 alter publication supabase_realtime add table public.worker_tracker;

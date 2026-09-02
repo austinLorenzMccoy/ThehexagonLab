@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { CommandStrip } from './command-strip'
 import { SignalNav } from './signal-nav'
-import { PanelLeftClose, PanelLeft, Hexagon } from 'lucide-react'
+import { PanelLeftClose, PanelLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const SHELL_BYPASS = ['/', '/login']
@@ -52,15 +52,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               collapsed ? 'justify-center px-2' : 'gap-3'
             )}
           >
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white">
-              <Hexagon className="h-4 w-4 text-black" />
-            </div>
-            {!collapsed && (
+            {collapsed ? (
+              <img src="/logo-mark.png" alt="TheHexagon Labs" className="h-7 w-7 flex-shrink-0" />
+            ) : (
               <div className="overflow-hidden">
-                <h1 className="text-sm font-bold text-white leading-none">
-                  Hexagon LABS
-                </h1>
-                <p className="text-[10px] text-white/40 mt-0.5">
+                <img src="/logo-full.png" alt="TheHexagon Labs" className="h-6 w-auto" />
+                <p className="text-[10px] text-white/40 mt-1">
                   Intelligence Control Room
                 </p>
               </div>
