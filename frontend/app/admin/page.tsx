@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context'
 import { AccessDenied } from '@/components/ui/access-denied'
 import { fetchPlatforms } from '@/lib/db'
 import { PlatformManager } from '@/components/admin/platform-manager'
+import { WorkerRevenueOverridePanel } from '@/components/admin/worker-revenue-override-panel'
 import type { UserRole, AppUser, Platform } from '@/types'
 import { Settings, Shield, Users, Loader2, Check, X, UserX, UserCheck, Trash2, Layers } from 'lucide-react'
 
@@ -469,6 +470,11 @@ export default function AdminPage() {
                             Required before this worker can log timesheet hours. Leave blank to clear.
                           </p>
                         </div>
+                      )}
+
+                      {/* Revenue split override — workers only, own self-contained load/save */}
+                      {editState!.role === 'worker' && (
+                        <WorkerRevenueOverridePanel workerUserId={user.id} />
                       )}
 
                       {/* Paystack payout recipient code — workers/referrers only */}

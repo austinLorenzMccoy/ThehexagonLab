@@ -371,3 +371,37 @@ export interface ReferralSummaryRow {
   total_commission_usd: number
   eligible_for_payout: boolean
 }
+
+// ── Revenue split percentages — admin-only, see backend/supabase/
+// migrations/20260904000000_revenue_split_percentages.sql ──────────
+
+export interface PlatformRevenueSplit {
+  platform_id: number
+  client_percentage: number | null
+  company_percentage: number | null
+  referral_percentage: number | null
+  worker_percentage: number | null
+  updated_at: string
+}
+
+export interface WorkerRevenueOverride {
+  worker_user_id: string
+  client_percentage: number | null
+  company_percentage: number | null
+  worker_percentage: number | null
+  updated_at: string
+}
+
+export interface ReferralRevenueOverride {
+  referral_id: string
+  referral_percentage: number | null
+  updated_at: string
+}
+
+/** Effective 4-way split after resolving overrides -> platform default -> 0. */
+export interface ResolvedRevenueSplit {
+  client_percentage: number
+  company_percentage: number
+  referral_percentage: number
+  worker_percentage: number
+}

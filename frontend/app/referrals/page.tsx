@@ -7,8 +7,9 @@ import { AccessDenied } from '@/components/ui/access-denied'
 import {
   fetchAllReferrals, updateReferralStatus, addReferral,
   fetchAllPayoutRequests, updatePayoutRequest, fetchAllUsers,
+  fetchAllReferralRevenueOverrides, upsertReferralRevenueOverride,
 } from '@/lib/db'
-import type { ReferralRow, ReferralStatus, PayoutRequestRow, AppUser } from '@/types'
+import type { ReferralRow, ReferralStatus, PayoutRequestRow, AppUser, ReferralRevenueOverride } from '@/types'
 import { Loader2, UserPlus, Wallet, Plus } from 'lucide-react'
 
 const REFERRAL_STATUSES: ReferralStatus[] = ['pending', 'active', 'paid']
@@ -24,13 +25,18 @@ export default function ReferralsAdminPage() {
   const [referrals, setReferrals] = useState<ReferralRow[]>([])
   const [payouts, setPayouts] = useState<PayoutRequestRow[]>([])
   const [referrers, setReferrers] = useState<AppUser[]>([])
+  const [commissionOverrides, setCommissionOverrides] = useState<ReferralRevenueOverride[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [savingCommissionId, setSavingCommissionId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const [r, p, users] = await Promise.all([fetchAllReferrals(), fetchAllPayoutRequests(), fetchAllUsers()])
+    const [r, p, users, co] = await Promise.all([
+      fetchAllReferrals(), fetchAllPayoutRequests(), fetchAllUsers(), fetchAllReferralRevenueOverrides(),
+    ])
     setReferrals(r); setPayouts(p)
     setReferrers(users.filter((u) => u.role === 'referrer'))
+    setCommissionOverrides(co)
     setLoading(false)
   }, [])
 
@@ -57,6 +63,20 @@ export default function ReferralsAdminPage() {
     const { error } = await updateReferralStatus(id, status)
     if (error) { toast(`Could not update: ${error}`, 'error'); return }
     load()
+  }
+
+  /** Admin-only, confidential — the referrer never sees this percentage,
+   *  only their resulting commission_usd. Blank falls back to the
+   *  platform's default referral % at calculation time. */
+  const handleCommissionPercentage = async (referralId: string, value: string) => {
+    setSavingCommissionId(referralId)
+    const { error } = await upsertReferralRevenueOverride({
+      referral_id: referralId,
+      referral_percentage: value === '' ? null : Number(value),
+    })
+    setSavingCommissionId(null)
+    if (error) { toast(`Could not save commission %: ${error}`, 'error'); return }
+    setCommissionOverrides(await fetchAllReferralRevenueOverrides())
   }
 
   const handlePayout = async (id: string, status: PayoutRequestRow['status']) => {
@@ -152,6 +172,7 @@ export default function ReferralsAdminPage() {
                   <th className="py-2 pr-3">Referred</th>
                   <th className="py-2 pr-3">Email</th>
                   <th className="py-2 pr-3">Commission</th>
+                  <th className="py-2 pr-3">Commission % (admin-only)</th>
                   <th className="py-2 pr-3">Status</th>
                 </tr>
               </thead>
@@ -161,6 +182,16 @@ export default function ReferralsAdminPage() {
                     <td className="py-2 pr-3 font-medium text-foreground">{r.referred_name}</td>
                     <td className="py-2 pr-3 text-xs text-muted-foreground">{r.referred_email ?? '—'}</td>
                     <td className="py-2 pr-3">${r.commission_usd.toLocaleString()}</td>
+                    <td className="py-2 pr-3">
+                      <input
+                        type="number" step="0.01" min="0" max="100"
+                        defaultValue={commissionOverrides.find((c) => c.referral_id === r.id)?.referral_percentage ?? ''}
+                        onBlur={(e) => handleCommissionPercentage(r.id, e.target.value)}
+                        disabled={savingCommissionId === r.id}
+                        placeholder="Platform default"
+                        className="w-24 rounded border border-border-subtle bg-transparent px-1 py-0.5 text-xs"
+                      />
+                    </td>
                     <td className="py-2 pr-3">
                       <select
                         value={r.status}

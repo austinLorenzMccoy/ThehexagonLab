@@ -11,6 +11,7 @@ import type {
   WorkerTimesheetRow, PaySlipRow, PaymentRow, WarningEventRow,
   WorkerFeedbackRow, DisputeRow, ReferralRow, PayoutRequestRow,
   PartnerContactRow, WorkerEarningsSummaryRow, ReferralSummaryRow,
+  PlatformRevenueSplit, WorkerRevenueOverride, ReferralRevenueOverride, ResolvedRevenueSplit,
 } from '@/types'
 
 // ── Platforms ───────────────────────────────────────────────────
@@ -732,4 +733,101 @@ export async function deletePartnerContact(id: string): Promise<{ error: string 
   const supabase = createClient()
   const { error } = await supabase.from('partner_contacts').delete().eq('id', id)
   return { error: error?.message ?? null }
+}
+
+// -- Revenue split percentages (admin-only — see migration for why) ---
+//
+// Client / company / referral / worker percentages, confidential per
+// party and gated by RLS to role='admin'. Workers and referrers never
+// query these tables; they only ever see the resulting dollar amounts
+// (pay slips, payments, referral commission_usd) as before.
+
+export async function fetchPlatformRevenueSplits(): Promise<PlatformRevenueSplit[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase.from('platform_revenue_splits').select('*')
+  if (error) { console.error('fetchPlatformRevenueSplits:', error.message); return [] }
+  return (data ?? []) as PlatformRevenueSplit[]
+}
+
+export async function upsertPlatformRevenueSplit(
+  entry: Omit<PlatformRevenueSplit, 'updated_at'>
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('platform_revenue_splits').upsert(entry as any, { onConflict: 'platform_id' })
+  return { error: error?.message ?? null }
+}
+
+export async function fetchWorkerRevenueOverride(workerUserId: string): Promise<WorkerRevenueOverride | null> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('worker_revenue_overrides').select('*').eq('worker_user_id', workerUserId).maybeSingle()
+  if (error) { console.error('fetchWorkerRevenueOverride:', error.message); return null }
+  return (data as any as WorkerRevenueOverride) ?? null
+}
+
+export async function fetchAllWorkerRevenueOverrides(): Promise<WorkerRevenueOverride[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase.from('worker_revenue_overrides').select('*')
+  if (error) { console.error('fetchAllWorkerRevenueOverrides:', error.message); return [] }
+  return (data ?? []) as WorkerRevenueOverride[]
+}
+
+export async function upsertWorkerRevenueOverride(
+  entry: Omit<WorkerRevenueOverride, 'updated_at'>
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('worker_revenue_overrides').upsert(entry as any, { onConflict: 'worker_user_id' })
+  return { error: error?.message ?? null }
+}
+
+export async function fetchAllReferralRevenueOverrides(): Promise<ReferralRevenueOverride[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase.from('referral_revenue_overrides').select('*')
+  if (error) { console.error('fetchAllReferralRevenueOverrides:', error.message); return [] }
+  return (data ?? []) as ReferralRevenueOverride[]
+}
+
+export async function upsertReferralRevenueOverride(
+  entry: Omit<ReferralRevenueOverride, 'updated_at'>
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('referral_revenue_overrides').upsert(entry as any, { onConflict: 'referral_id' })
+  return { error: error?.message ?? null }
+}
+
+/**
+ * Resolves the effective 4-way split for a worker: worker-level
+ * override wins, falling back to the platform's default; referral %
+ * additionally checks a per-referral override. Non-admin callers get
+ * all zeros back (RLS silently returns no rows), which is the correct
+ * "silo" behavior — only admin can ever see real percentages.
+ */
+export async function resolveRevenueSplit(
+  workerUserId: string, platformId: number | null, referralId?: string | null
+): Promise<ResolvedRevenueSplit> {
+  const supabase = createClient()
+  const [platformRes, workerRes, referralRes] = await Promise.all([
+    platformId
+      ? supabase.from('platform_revenue_splits').select('*').eq('platform_id', platformId).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from('worker_revenue_overrides').select('*').eq('worker_user_id', workerUserId).maybeSingle(),
+    referralId
+      ? supabase.from('referral_revenue_overrides').select('*').eq('referral_id', referralId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+
+  const platformSplit = platformRes.data as any
+  const workerOverride = workerRes.data as any
+  const referralOverride = referralRes.data as any
+
+  const client = workerOverride?.client_percentage ?? platformSplit?.client_percentage ?? 0
+  const company = workerOverride?.company_percentage ?? platformSplit?.company_percentage ?? 0
+  const referral = referralOverride?.referral_percentage ?? platformSplit?.referral_percentage ?? 0
+  const worker = workerOverride?.worker_percentage ?? platformSplit?.worker_percentage
+    ?? Math.max(0, 100 - client - company - referral)
+
+  return { client_percentage: client, company_percentage: company, referral_percentage: referral, worker_percentage: worker }
 }

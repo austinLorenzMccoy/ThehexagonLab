@@ -10,6 +10,7 @@ import {
   slugifyPlatformLabel,
   type PlatformUsage,
 } from '@/lib/platform-utils'
+import { RevenueSplitPanel } from '@/components/admin/revenue-split-panel'
 import {
   Loader2,
   Plus,
@@ -928,6 +929,10 @@ export function PlatformManager({ onPlatformsChanged }: { onPlatformsChanged?: (
                         <Plus className="h-3 w-3" />
                         Add Column
                       </button>
+                    </div>
+
+                    <div className="border-t border-border-subtle pt-3">
+                      <RevenueSplitPanel platformId={p.id} />
                     </div>
                   </div>
                 )}

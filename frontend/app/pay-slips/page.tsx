@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
 import { AccessDenied } from '@/components/ui/access-denied'
@@ -13,9 +13,10 @@ import {
   getPaySlipFileUrl,
   recordPaySlipPayment,
   fetchPlatforms,
+  resolveRevenueSplit,
 } from '@/lib/db'
-import type { WorkerEarningsSummaryRow, PaySlipRow, PaymentRow, PaySlipMonth, Platform } from '@/types'
-import { Loader2, Receipt, Upload, FileText, Wallet, Check } from 'lucide-react'
+import type { WorkerEarningsSummaryRow, PaySlipRow, PaymentRow, PaySlipMonth, Platform, ResolvedRevenueSplit } from '@/types'
+import { Loader2, Receipt, Upload, FileText, Wallet, Check, Percent } from 'lucide-react'
 
 const MONTHS: PaySlipMonth[] = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -28,7 +29,7 @@ const MONTHS: PaySlipMonth[] = [
  *  20260903010000_manager_permission_swap.sql). Workers see their
  *  own slips read-only on /dashboard. */
 export default function PaySlipsPage() {
-  const { hasAccess, appUser } = useAuth()
+  const { hasAccess, appUser, hasRole } = useAuth()
   const { toast } = useToast()
 
   const [workers, setWorkers] = useState<WorkerEarningsSummaryRow[]>([])
@@ -38,6 +39,16 @@ export default function PaySlipsPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [payingId, setPayingId] = useState<string | null>(null)
+
+  // Revenue split calculator (admin-only — see resolveRevenueSplit).
+  // Mirrors the worker/platform selects in the form below so the
+  // calculator stays in sync without duplicating the dropdowns.
+  const amountInputRef = useRef<HTMLInputElement>(null)
+  const [calcWorkerId, setCalcWorkerId] = useState('')
+  const [calcPlatformId, setCalcPlatformId] = useState('')
+  const [grossAmount, setGrossAmount] = useState('')
+  const [split, setSplit] = useState<ResolvedRevenueSplit | null>(null)
+  const [calculating, setCalculating] = useState(false)
 
   const load = useCallback(async () => {
     const [w, p, s, pm] = await Promise.all([
@@ -91,7 +102,23 @@ export default function PaySlipsPage() {
     if (error) { toast(`Could not issue pay slip: ${error}`, 'error'); return }
     toast('Pay slip issued', 'success')
     ;(e.target as HTMLFormElement).reset()
+    setCalcWorkerId(''); setCalcPlatformId(''); setGrossAmount(''); setSplit(null)
     load()
+  }
+
+  const handleCalculateSplit = async () => {
+    if (!calcWorkerId) { toast('Select a worker first', 'error'); return }
+    setCalculating(true)
+    const resolved = await resolveRevenueSplit(calcWorkerId, calcPlatformId ? Number(calcPlatformId) : null)
+    setCalculating(false)
+    setSplit(resolved)
+  }
+
+  const useWorkerAmountAsExpected = () => {
+    if (!split || !grossAmount || !amountInputRef.current) return
+    const workerAmount = (Number(grossAmount) * split.worker_percentage) / 100
+    amountInputRef.current.value = workerAmount.toFixed(2)
+    toast('Expected amount filled from the split calculator', 'success')
   }
 
   const handleDownload = async (path: string) => {
@@ -156,14 +183,72 @@ export default function PaySlipsPage() {
         </p>
       </div>
 
+      {hasRole('admin') && (
+        <div className="rounded-lg border border-border-subtle bg-card p-4 space-y-2">
+          <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <Percent className="h-3.5 w-3.5" /> Revenue Split Calculator (admin-only)
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            Uses the worker/platform selected below. Confidential — never shown to the worker,
+            only the resulting amount you choose to use.
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="space-y-1">
+              <span className="text-[10px] text-muted-foreground block">Gross amount (USD)</span>
+              <input
+                type="number" step="0.01" min="0" value={grossAmount}
+                onChange={(e) => setGrossAmount(e.target.value)}
+                placeholder="e.g. 850.00"
+                className="w-32 rounded border border-border-subtle bg-background px-2 py-1 text-xs"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleCalculateSplit}
+              disabled={calculating || !calcWorkerId}
+              className="rounded bg-ops px-3 py-1.5 text-[10px] font-medium text-white hover:bg-ops-dark disabled:opacity-50"
+            >
+              {calculating ? 'Calculating…' : 'Calculate Split'}
+            </button>
+            {split && (
+              <>
+                <span className="text-[10px] text-muted-foreground">
+                  Client {split.client_percentage}% · Company {split.company_percentage}% ·
+                  Referral {split.referral_percentage}% · Worker {split.worker_percentage}%
+                </span>
+                {grossAmount && (
+                  <button
+                    type="button"
+                    onClick={useWorkerAmountAsExpected}
+                    className="rounded border border-ops/30 px-2.5 py-1 text-[10px] font-medium text-ops hover:bg-ops/10"
+                  >
+                    Use Worker Amount (${((Number(grossAmount) * split.worker_percentage) / 100).toFixed(2)})
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleIssue} className="grid grid-cols-1 gap-3 rounded-lg border border-ops/20 bg-ops/5 p-6 sm:grid-cols-3">
-        <select name="worker_user_id" required className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm">
+        <select
+          name="worker_user_id" required
+          value={calcWorkerId}
+          onChange={(e) => { setCalcWorkerId(e.target.value); setSplit(null) }}
+          className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm"
+        >
           <option value="">Select worker…</option>
           {workers.map((w) => (
             <option key={w.worker_user_id} value={w.worker_user_id}>{w.display_name ?? w.email}</option>
           ))}
         </select>
-        <select name="platform_id" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm">
+        <select
+          name="platform_id"
+          value={calcPlatformId}
+          onChange={(e) => { setCalcPlatformId(e.target.value); setSplit(null) }}
+          className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm"
+        >
           <option value="">Platform (optional)</option>
           {platforms.map((p) => (
             <option key={p.id} value={p.id}>{p.icon} {p.label}</option>
@@ -174,7 +259,7 @@ export default function PaySlipsPage() {
         </select>
         <input name="period_year" type="number" required defaultValue={new Date().getFullYear()}
           className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
-        <input name="expected_amount_usd" type="number" step="0.01" min="0" required placeholder="Expected amount (USD)"
+        <input ref={amountInputRef} name="expected_amount_usd" type="number" step="0.01" min="0" required placeholder="Expected amount (USD)"
           className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
         <input name="currency" defaultValue="USD" placeholder="Currency"
           className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
