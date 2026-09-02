@@ -27,6 +27,9 @@ Thumbs.db
 # Supabase local
 backend/data/*.xlsx
 
+# Docs (scratch/PRD notes — prone to accidental secret pastes)
+doc/
+
 # Test coverage
 coverage/
 *.lcov
