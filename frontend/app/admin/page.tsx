@@ -63,6 +63,9 @@ interface EditState {
    *  the existing value is never round-tripped to the browser (see
    *  GET /api/admin/users, which masks it). */
   paystack_recipient_code: string
+  /** Worker's hourly rate, prefilled from the real value (not sensitive,
+   *  unlike the Paystack code, so no masking needed). Blank clears it. */
+  hourly_rate_usd: string
 }
 
 export default function AdminPage() {
@@ -113,6 +116,7 @@ export default function AdminPage() {
       platform_access: user.platform_access ?? [],
       can_view_orders: user.can_view_orders,
       paystack_recipient_code: '',
+      hourly_rate_usd: user.hourly_rate_usd != null ? String(user.hourly_rate_usd) : '',
     })
     setMessage(null)
   }
@@ -159,6 +163,9 @@ export default function AdminPage() {
         can_view_orders: editState.role === 'admin' ? true : editState.can_view_orders,
         ...(editState.paystack_recipient_code
           ? { paystack_recipient_code: editState.paystack_recipient_code }
+          : {}),
+        ...(editState.role === 'worker'
+          ? { hourly_rate_usd: editState.hourly_rate_usd === '' ? null : Number(editState.hourly_rate_usd) }
           : {}),
       }),
     })
@@ -443,6 +450,27 @@ export default function AdminPage() {
                         <span className="text-xs text-foreground">Can view orders</span>
                       </label>
 
+                      {/* Hourly rate — workers only; drives their timesheet earnings math */}
+                      {editState!.role === 'worker' && (
+                        <div>
+                          <label className="text-xs font-medium text-foreground mb-1 block">
+                            Hourly Rate (USD)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editState!.hourly_rate_usd}
+                            onChange={(e) => setEditState({ ...editState!, hourly_rate_usd: e.target.value })}
+                            placeholder="e.g. 17.00"
+                            className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-ops/50"
+                          />
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            Required before this worker can log timesheet hours. Leave blank to clear.
+                          </p>
+                        </div>
+                      )}
+
                       {/* Paystack payout recipient code — workers/referrers only */}
                       {(editState!.role === 'worker' || editState!.role === 'referrer') && (
                         <div>
@@ -490,6 +518,17 @@ export default function AdminPage() {
                         <span className="rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5">
                           Orders ✓
                         </span>
+                      )}
+                      {user.role === 'worker' && (
+                        user.hourly_rate_usd != null ? (
+                          <span className="rounded bg-green-500/10 text-green-600 dark:text-green-400 px-1.5 py-0.5">
+                            ${user.hourly_rate_usd}/hr
+                          </span>
+                        ) : (
+                          <span className="rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5">
+                            No hourly rate set
+                          </span>
+                        )
                       )}
                     </div>
                   )}

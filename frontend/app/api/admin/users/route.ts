@@ -30,10 +30,15 @@ export async function PATCH(request: NextRequest) {
   const adminUser = await assertAdmin(supabase)
   if (!adminUser) return NextResponse.json({ error: 'Access denied' }, { status: 403 })
 
-  const { userId, role, platform_access, can_view_orders, worker_id, is_active, paystack_recipient_code } = await request.json()
+  const { userId, role, platform_access, can_view_orders, worker_id, is_active, paystack_recipient_code, hourly_rate_usd } = await request.json()
 
   if (!userId) {
     return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+  }
+
+  if (hourly_rate_usd !== undefined && hourly_rate_usd !== null &&
+      (typeof hourly_rate_usd !== 'number' || Number.isNaN(hourly_rate_usd) || hourly_rate_usd < 0)) {
+    return NextResponse.json({ error: 'hourly_rate_usd must be a non-negative number' }, { status: 400 })
   }
 
   // Paystack recipient code only (no role change) — encrypted at rest.
@@ -92,6 +97,7 @@ export async function PATCH(request: NextRequest) {
     ...(paystack_recipient_code
       ? { paystack_recipient_code: encryptField(paystack_recipient_code) }
       : {}),
+    ...(hourly_rate_usd !== undefined ? { hourly_rate_usd } : {}),
   }
 
   const { error } = await (createAdminClient() as any)
@@ -104,7 +110,10 @@ export async function PATCH(request: NextRequest) {
     action: 'role_change',
     entity_type: 'user',
     entity_id: userId,
-    details: { new_role: role, platform_access: updates.platform_access, can_view_orders: updates.can_view_orders },
+    details: {
+      new_role: role, platform_access: updates.platform_access, can_view_orders: updates.can_view_orders,
+      ...(hourly_rate_usd !== undefined ? { hourly_rate_usd } : {}),
+    },
   })
 
   return NextResponse.json({ success: true })
