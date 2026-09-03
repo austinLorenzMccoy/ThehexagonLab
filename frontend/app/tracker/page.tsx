@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
+import { useToast } from '@/lib/toast-context'
 import { AccessDenied } from '@/components/ui/access-denied'
 import {
   fetchPlatforms,
@@ -10,10 +11,11 @@ import {
   fetchPlatformTaskColumns,
   updateTrackerField,
   updateTaskStatus,
+  deleteTrackerRow,
   fetchAllUsers,
 } from '@/lib/db'
 import type { Platform, WorkerTrackerRow, PlatformTaskColumn, WarningLevel, YNStatus, AppUser } from '@/types'
-import { Download, Upload, Loader2 } from 'lucide-react'
+import { Download, Upload, Loader2, Trash2 } from 'lucide-react'
 import { ImportDialog, IMPORT_CONFIGS } from '@/components/import/import-dialog'
 
 const WARNING_OPTIONS: WarningLevel[] = ['🟢 Clear', '🟡 Minor', '🔴 Serious', '⚫ Banned', '➖ None']
@@ -21,6 +23,7 @@ const STATUS_OPTIONS: YNStatus[] = ['✅ Yes', '❌ No', '⏳ Pending', '🔄 In
 
 export default function TrackerPage() {
   const { hasAccess, isLoading: authLoading } = useAuth()
+  const { toast } = useToast()
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState<string>('')
   const [workers, setWorkers] = useState<WorkerTrackerRow[]>([])
@@ -91,6 +94,14 @@ export default function TrackerPage() {
 
   const handleExport = () => {
     window.open(`/api/export/worker_tracker?platform=${selectedPlatform}`, '_blank')
+  }
+
+  const handleDelete = async (rowId: string) => {
+    if (!window.confirm('Delete this tracker entry? This cannot be undone.')) return
+    const { error } = await deleteTrackerRow(rowId)
+    if (error) { toast(`Could not delete entry: ${error}`, 'error'); return }
+    setWorkers((prev) => prev.filter((w) => w.id !== rowId))
+    toast('Entry deleted', 'success')
   }
 
   if (loading) {
@@ -182,6 +193,7 @@ export default function TrackerPage() {
                     {col.column_label}
                   </th>
                 ))}
+                <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -193,9 +205,30 @@ export default function TrackerPage() {
                       {worker.email && (
                         <p className="text-[10px] text-muted-foreground">{worker.email}</p>
                       )}
+                      <input
+                        type="text"
+                        defaultValue={worker.worker_name}
+                        onBlur={(e) => {
+                          if (e.target.value && e.target.value !== worker.worker_name) {
+                            handleFieldUpdate(worker.id, 'worker_name', e.target.value)
+                          }
+                        }}
+                        className="mt-1 w-28 rounded bg-transparent border border-border-subtle px-1 py-0.5 text-[10px]"
+                      />
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-xs text-foreground">{worker.owner_name}</td>
+                  <td className="px-3 py-2">
+                    <input
+                      type="text"
+                      defaultValue={worker.owner_name}
+                      onBlur={(e) => {
+                        if (e.target.value !== worker.owner_name) {
+                          handleFieldUpdate(worker.id, 'owner_name', e.target.value)
+                        }
+                      }}
+                      className="w-24 rounded bg-transparent border border-border-subtle px-1 py-0.5 text-xs"
+                    />
+                  </td>
                   <td className="px-3 py-2">
                     <select
                       value={worker.manager_id ?? ''}
@@ -265,6 +298,15 @@ export default function TrackerPage() {
                       </select>
                     </td>
                   ))}
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => handleDelete(worker.id)}
+                      className="rounded p-1 hover:bg-red-500/10 transition-colors"
+                      title="Delete entry"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
