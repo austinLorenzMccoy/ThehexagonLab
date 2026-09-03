@@ -73,6 +73,20 @@ export function WorkerPortal() {
   // the true gross figure for the Pay Slips split calculator). Never
   // shown to the worker directly; see effectiveRate for that.
   const rate = appUser?.hourly_rate_usd ?? 0
+  // Periods already settled — pay slip issued AND a payment for it has
+  // landed. Entries from these months stay in worker_timesheets
+  // untouched, but drop out of the on-screen log so it doesn't grow
+  // forever; the pay slip is the permanent record from here on.
+  const paidPeriods = new Set(
+    paySlips
+      .filter((slip) => payments.some((p) => p.pay_slip_id === slip.id && p.status === 'paid'))
+      .map((slip) => `${slip.period_year}-${slip.period_month}`)
+  )
+  const visibleTimesheets = timesheets.filter((t) => {
+    const d = new Date(t.work_date)
+    const monthName = d.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })
+    return !paidPeriods.has(`${d.getUTCFullYear()}-${monthName}`)
+  })
 
   const handleLogHours = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -238,9 +252,11 @@ export function WorkerPortal() {
             </p>
           )}
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {timesheets.length === 0 ? (
-              <p className="text-xs text-muted-foreground py-4 text-center">No hours logged yet</p>
-            ) : timesheets.map((t) => {
+            {visibleTimesheets.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                {timesheets.length === 0 ? 'No hours logged yet' : 'All logged hours have been paid out'}
+              </p>
+            ) : visibleTimesheets.map((t) => {
               const earnings = timesheetEarnings.find((e) => e.id === t.id)?.earnings_usd ?? 0
               return (
                 <div key={t.id} className="flex items-center justify-between rounded bg-background/50 px-3 py-2 text-xs">
