@@ -140,16 +140,22 @@ export default function PaySlipsPage() {
     })
     const body = await res.json().catch(() => ({}))
     if (body?.processed) {
-      toast('Payment sent via Paystack', 'success')
+      toast(
+        body.status === 'processing'
+          ? (body.message || 'Transfer accepted by Paystack, awaiting final confirmation.')
+          : `Payment sent via Paystack (${body.currency ?? 'NGN'} ${body.amountSettled?.toLocaleString?.() ?? ''})`,
+        body.status === 'processing' ? 'info' : 'success'
+      )
       setPayingId(null)
       load()
       return
     }
     // Only degrade to manual recording when Paystack wasn't actually
-    // attempted (not configured / no recipient on file). A real transfer
-    // attempt that failed (reason: 'request_failed') or a hard validation
-    // error must NOT be silently recorded as paid.
-    const degradable = body?.reason === 'not_configured' || body?.reason === 'no_recipient'
+    // attempted (not configured / no recipient on file / exchange rate
+    // unavailable). A real transfer attempt that failed
+    // (reason: 'request_failed') or a hard validation error must NOT
+    // be silently recorded as paid.
+    const degradable = body?.reason === 'not_configured' || body?.reason === 'no_recipient' || body?.reason === 'fx_unavailable'
     if (!degradable) {
       toast(body?.message || body?.error || 'Could not process payment', 'error')
       setPayingId(null)
@@ -297,6 +303,7 @@ export default function PaySlipsPage() {
               <tbody className="divide-y divide-border-subtle">
                 {slips.map((s) => {
                   const paid = payments.some((p) => p.pay_slip_id === s.id && p.status === 'paid')
+                  const inFlight = !paid && payments.some((p) => p.pay_slip_id === s.id && p.status === 'processing')
                   return (
                     <tr key={s.id}>
                       <td className="py-2 pr-3 font-medium text-foreground whitespace-nowrap">{workerLabel(s.worker_user_id)}</td>
@@ -316,6 +323,10 @@ export default function PaySlipsPage() {
                         {paid ? (
                           <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">
                             <Check className="h-3 w-3" /> Paid
+                          </span>
+                        ) : inFlight ? (
+                          <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Awaiting confirmation
                           </span>
                         ) : (
                           <button

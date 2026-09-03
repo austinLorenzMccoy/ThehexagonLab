@@ -7,6 +7,7 @@ import { useTheme } from '@/lib/theme-context'
 import { GlobalSearch } from './global-search'
 import { LogOut, Settings, X, Sun, Moon, Monitor, Bell } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { setMyPayoutCurrency } from '@/lib/db'
 
 export function CommandStrip() {
   const router = useRouter()
@@ -16,6 +17,21 @@ export function CommandStrip() {
   const [loggingOut, setLoggingOut] = useState(false)
   const [alerts, setAlerts] = useState<any[]>([])
   const [showAlerts, setShowAlerts] = useState(false)
+  const [payoutCurrency, setPayoutCurrency] = useState<'NGN' | 'USD'>(appUser?.payout_currency ?? 'NGN')
+  const [savingCurrency, setSavingCurrency] = useState(false)
+
+  useEffect(() => {
+    if (appUser?.payout_currency) setPayoutCurrency(appUser.payout_currency)
+  }, [appUser?.payout_currency])
+
+  const handlePayoutCurrency = async (currency: 'NGN' | 'USD') => {
+    setSavingCurrency(true)
+    const prev = payoutCurrency
+    setPayoutCurrency(currency)
+    const { error } = await setMyPayoutCurrency(currency)
+    setSavingCurrency(false)
+    if (error) setPayoutCurrency(prev)
+  }
 
   const loadAlerts = useCallback(async () => {
     if (appUser?.role !== 'admin') return
@@ -204,6 +220,30 @@ export function CommandStrip() {
                 ))}
               </div>
             </div>
+            {(appUser.role === 'worker' || appUser.role === 'referrer') && (
+              <div className="rounded-lg border border-border-subtle bg-background/50 p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Payout Currency</p>
+                <div className="mt-1 flex gap-1">
+                  {(['NGN', 'USD'] as const).map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => handlePayoutCurrency(c)}
+                      disabled={savingCurrency}
+                      className={`rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                        payoutCurrency === c
+                          ? 'bg-ops text-white'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Your pay is converted to this currency at the live rate when settled via Paystack.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

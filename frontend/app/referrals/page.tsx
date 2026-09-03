@@ -91,7 +91,12 @@ export default function ReferralsAdminPage() {
       })
       const body = await res.json().catch(() => ({}))
       if (body?.processed) {
-        toast('Payout sent via Paystack', 'success')
+        toast(
+          body.status === 'processing'
+            ? (body.message || 'Transfer accepted by Paystack, awaiting final confirmation.')
+            : `Payout sent via Paystack (${body.currency ?? 'NGN'} ${body.amountSettled?.toLocaleString?.() ?? ''})`,
+          body.status === 'processing' ? 'info' : 'success'
+        )
         load()
         return
       }
@@ -99,7 +104,7 @@ export default function ReferralsAdminPage() {
       // actually attempted. A real transfer attempt that failed
       // (reason: 'request_failed') or a hard validation error must NOT
       // be silently recorded as paid.
-      const degradable = body?.reason === 'not_configured' || body?.reason === 'no_recipient'
+      const degradable = body?.reason === 'not_configured' || body?.reason === 'no_recipient' || body?.reason === 'fx_unavailable'
       if (!degradable) {
         toast(body?.message || body?.error || 'Could not process payout', 'error')
         return
@@ -224,7 +229,7 @@ export default function ReferralsAdminPage() {
                   <p className="text-xs text-muted-foreground">{new Date(p.requested_at).toLocaleDateString()}</p>
                 </div>
                 <span className="font-semibold text-foreground">${p.amount_usd.toLocaleString()}</span>
-                {p.status === 'pending' || p.status === 'approved' ? (
+                {p.status === 'pending' || p.status === 'approved' || p.status === 'failed' ? (
                   <div className="flex gap-1.5">
                     {p.status === 'pending' && (
                       <button onClick={() => handlePayout(p.id, 'approved')} className="rounded-full border border-border-subtle px-2 py-0.5 text-[10px] font-medium hover:bg-muted">
@@ -232,12 +237,16 @@ export default function ReferralsAdminPage() {
                       </button>
                     )}
                     <button onClick={() => handlePayout(p.id, 'paid')} className="rounded-full bg-ops px-2 py-0.5 text-[10px] font-medium text-white hover:bg-ops-dark">
-                      Mark Paid
+                      {p.status === 'failed' ? 'Retry' : 'Mark Paid'}
                     </button>
                     <button onClick={() => handlePayout(p.id, 'rejected')} className="rounded-full border border-red-500/30 px-2 py-0.5 text-[10px] font-medium text-red-600 hover:bg-red-500/10">
                       Reject
                     </button>
                   </div>
+                ) : p.status === 'processing' ? (
+                  <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                    Awaiting confirmation
+                  </span>
                 ) : (
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground capitalize">{p.status}</span>
                 )}

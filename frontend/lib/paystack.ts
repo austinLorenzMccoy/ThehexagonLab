@@ -13,6 +13,8 @@
  * only ever be read on the server (API routes / edge functions).
  */
 
+import { createHmac, timingSafeEqual } from 'crypto'
+
 const PAYSTACK_API = 'https://api.paystack.co'
 
 function secretKey(): string | null {
@@ -107,4 +109,33 @@ export async function initiateTransfer(params: {
 
 export async function verifyTransfer(reference: string): Promise<PaystackResult<PaystackTransfer>> {
   return paystackFetch<PaystackTransfer>(`/transfer/verify/${encodeURIComponent(reference)}`)
+}
+
+interface PaystackBank {
+  name: string
+  code: string
+  currency: string
+}
+
+/** Lists banks Paystack supports for a country/currency — feeds the
+ *  recipient-creation UI's bank picker (see gap #1). */
+export async function listBanks(params?: { country?: string; currency?: string }): Promise<PaystackResult<PaystackBank[]>> {
+  const qs = new URLSearchParams()
+  qs.set('country', params?.country ?? 'nigeria')
+  if (params?.currency) qs.set('currency', params.currency)
+  return paystackFetch<PaystackBank[]>(`/bank?${qs.toString()}`)
+}
+
+/** Verifies Paystack's webhook signature — HMAC-SHA512 of the raw
+ *  request body, keyed by the secret key (see
+ *  https://paystack.com/docs/payments/webhooks/). Callers must pass
+ *  the exact raw request body text, not a re-serialized/parsed
+ *  version, or the hash won't match. */
+export function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
+  const key = secretKey()
+  if (!key || !signatureHeader) return false
+  const expected = createHmac('sha512', key).update(rawBody).digest('hex')
+  const a = Buffer.from(expected, 'utf8')
+  const b = Buffer.from(signatureHeader, 'utf8')
+  return a.length === b.length && timingSafeEqual(a, b)
 }

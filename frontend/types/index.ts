@@ -19,6 +19,10 @@ export interface AppUser {
   hourly_rate_usd?: number | null
   /** Worker Recovery System — Paystack transfer recipient code for payouts. */
   paystack_recipient_code?: string | null
+  /** Self-service payout settlement currency (worker/referrer sets this
+   *  themselves via set_my_payout_currency()). Defaults to NGN, Paystack's
+   *  native transfer currency. See doc/paystack_integration_guide.md gap #2. */
+  payout_currency?: 'NGN' | 'USD'
   last_sign_in: string | null
   created_at: string
   updated_at: string
@@ -269,6 +273,14 @@ export interface PaymentRow {
   paid_at: string | null
   created_at: string
   updated_at: string
+  /** Settlement audit — what actually got sent via Paystack, vs. the
+   *  nominal amount_usd figure the pay slip was denominated in. Null
+   *  for payments settled manually (no Paystack transfer occurred).
+   *  See doc/paystack_integration_guide.md gap #2. */
+  currency?: 'NGN' | 'USD' | null
+  fx_rate?: number | null
+  amount_settled?: number | null
+  paystack_transfer_code?: string | null
 }
 
 export interface WarningEventRow {
@@ -325,7 +337,7 @@ export interface ReferralRow {
 }
 
 export type PayoutType = 'referral_commission' | 'worker_early_pay'
-export type PayoutStatus = 'pending' | 'approved' | 'rejected' | 'paid'
+export type PayoutStatus = 'pending' | 'approved' | 'rejected' | 'processing' | 'paid' | 'failed'
 
 export interface PayoutRequestRow {
   id: string
@@ -338,6 +350,11 @@ export interface PayoutRequestRow {
   requested_at: string
   processed_by: string | null
   processed_at: string | null
+  /** Settlement audit — see PaymentRow.currency / gap #2. */
+  currency?: 'NGN' | 'USD' | null
+  fx_rate?: number | null
+  amount_settled?: number | null
+  paystack_transfer_code?: string | null
 }
 
 export type PartnerContactType = 'worker' | 'referrer' | 'partner'

@@ -6,6 +6,7 @@ import { AccessDenied } from '@/components/ui/access-denied'
 import { fetchPlatforms } from '@/lib/db'
 import { PlatformManager } from '@/components/admin/platform-manager'
 import { WorkerRevenueOverridePanel } from '@/components/admin/worker-revenue-override-panel'
+import { PaystackRecipientForm } from '@/components/admin/paystack-recipient-form'
 import type { UserRole, AppUser, Platform } from '@/types'
 import { Settings, Shield, Users, Loader2, Check, X, UserX, UserCheck, Trash2, Layers } from 'lucide-react'
 
@@ -505,6 +506,12 @@ export default function AdminPage() {
                           <p className="mt-1 text-[10px] text-muted-foreground">
                             Stored encrypted. Create this via Paystack&apos;s Create Transfer Recipient API for the worker&apos;s bank account.
                           </p>
+                          <PaystackRecipientForm
+                            userId={user.id}
+                            defaultAccountName={user.display_name ?? user.email}
+                            payoutCurrency={user.payout_currency ?? 'NGN'}
+                            onCreated={loadUsers}
+                          />
                         </div>
                       )}
                     </div>

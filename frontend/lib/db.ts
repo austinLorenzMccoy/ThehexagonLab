@@ -395,6 +395,19 @@ export async function fetchMyEffectiveHourlyRate(): Promise<number> {
   return (data as number) ?? 0
 }
 
+/**
+ * Self-service: a worker/referrer sets their own preferred Paystack
+ * payout currency (NGN or USD) — the app converts their USD-nominal
+ * pay slip/payout amount to this currency at settlement time. See
+ * set_my_payout_currency() in the PART 15 migration and
+ * doc/paystack_integration_guide.md gap #2.
+ */
+export async function setMyPayoutCurrency(currency: 'NGN' | 'USD'): Promise<{ error: string | null }> {
+  const supabase = createClient() as any
+  const { error } = await supabase.rpc('set_my_payout_currency', { new_currency: currency })
+  return { error: error?.message ?? null }
+}
+
 // -- Pay slips & payments ---------------------------------------------
 
 export async function fetchPaySlips(workerUserId: string): Promise<PaySlipRow[]> {
