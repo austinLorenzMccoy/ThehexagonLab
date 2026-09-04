@@ -9,16 +9,18 @@ import {
   insertRegistryRow,
   updateRegistryRow,
   deleteRegistryRow,
+  provisionAccount,
 } from '@/lib/db'
 import type { Platform, WorkerRegistryRow, AccountType, GeoworkStatus } from '@/types'
 import { useToast } from '@/lib/toast-context'
-import { Search, UserPlus, Loader2, X, Pencil, Trash2 } from 'lucide-react'
+import { PaystackRecipientForm } from '@/components/admin/paystack-recipient-form'
+import { Search, UserPlus, Loader2, X, Pencil, Trash2, Link2, CircleCheck } from 'lucide-react'
 
 const ACCOUNT_TYPES: AccountType[] = ['Full-Time', 'Part-Time', 'Contractor', 'Intern', 'Freelance']
 const GEOWORK_OPTIONS: GeoworkStatus[] = ['✅ Passed', '❌ Failed', '⏳ Pending', '🔄 Retake', '⭕ Exempted']
 
 export default function RegistryPage() {
-  const { hasAccess, isLoading: authLoading } = useAuth()
+  const { hasAccess, hasRole, isLoading: authLoading } = useAuth()
   const [platforms, setPlatforms] = useState<Platform[]>([])
   const [selectedPlatform, setSelectedPlatform] = useState<string>('')
   const [workers, setWorkers] = useState<WorkerRegistryRow[]>([])
@@ -27,6 +29,9 @@ export default function RegistryPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingRow, setEditingRow] = useState<WorkerRegistryRow | null>(null)
+  const [createAccount, setCreateAccount] = useState(false)
+  const [provisioning, setProvisioning] = useState(false)
+  const [justProvisioned, setJustProvisioned] = useState<{ userId: string; name: string } | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -73,22 +78,39 @@ export default function RegistryPage() {
     const fd = new FormData(e.currentTarget)
     if (!activePlatform) return
 
+    const ownerName = fd.get('owner_name') as string
+    const email = (fd.get('email') as string) || null
+
     const { id, error } = await insertRegistryRow({
       platform_id: activePlatform.id,
       project_task: fd.get('project_task') as string,
-      owner_name: fd.get('owner_name') as string,
+      owner_name: ownerName,
       account_type: fd.get('account_type') as AccountType,
-      email: (fd.get('email') as string) || null,
+      email,
       passport: null,
       geowork_test: '⏳ Pending',
       date_started: (fd.get('date_started') as string) || null,
       notes: (fd.get('notes') as string) || null,
     })
 
-    if (!error && id) {
-      setShowForm(false)
-      loadRegistry(selectedPlatform)
+    if (error || !id) return
+
+    if (createAccount && email) {
+      setProvisioning(true)
+      const { userId, error: provisionError } = await provisionAccount(email, ownerName)
+      setProvisioning(false)
+      if (provisionError) {
+        toast(`Worker registered, but account creation failed: ${provisionError}`, 'error')
+      } else if (userId) {
+        await updateRegistryRow(id, { linked_user_id: userId })
+        setJustProvisioned({ userId, name: ownerName })
+        toast('Worker registered and account created', 'success')
+      }
     }
+
+    setShowForm(false)
+    setCreateAccount(false)
+    loadRegistry(selectedPlatform)
   }
 
   const handleDelete = async (rowId: string) => {
@@ -187,10 +209,49 @@ export default function RegistryPage() {
               <input name="notes" className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
             </div>
           </div>
-          <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
-            Register Worker
+          {hasRole('admin') && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={createAccount}
+                onChange={(e) => setCreateAccount(e.target.checked)}
+                className="rounded border-border-subtle accent-ops"
+              />
+              <span className="text-xs text-foreground">
+                Also create a login account for this person (requires email — lets you attach a Paystack payout code right away)
+              </span>
+            </label>
+          )}
+          <button type="submit" disabled={provisioning} className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-50">
+            {provisioning ? 'Registering…' : 'Register Worker'}
           </button>
         </form>
+      )}
+
+      {/* Post-provisioning: attach a Paystack payout code right away */}
+      {justProvisioned && (
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CircleCheck className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+              <p className="text-sm text-foreground">
+                Account created for <span className="font-medium">{justProvisioned.name}</span>.
+                Add their bank details now, or do it later from Admin &gt; Manage Users.
+              </p>
+            </div>
+            <button onClick={() => setJustProvisioned(null)} className="rounded p-1 hover:bg-muted shrink-0">
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="mt-2">
+            <PaystackRecipientForm
+              userId={justProvisioned.userId}
+              defaultAccountName={justProvisioned.name}
+              payoutCurrency="NGN"
+              onCreated={() => setJustProvisioned(null)}
+            />
+          </div>
+        </div>
       )}
 
       {/* Platform tabs */}
@@ -241,6 +302,7 @@ export default function RegistryPage() {
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Project/Task</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Owner</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Account</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Geowork</th>
@@ -254,6 +316,15 @@ export default function RegistryPage() {
                 <tr key={w.id} className="bg-card hover:bg-muted/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{w.project_task}</td>
                   <td className="px-4 py-3 text-foreground">{w.owner_name}</td>
+                  <td className="px-4 py-3">
+                    {w.linked_user_id ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400" title="Has a real login account">
+                        <Link2 className="h-3 w-3" /> Linked
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
                       {w.account_type}

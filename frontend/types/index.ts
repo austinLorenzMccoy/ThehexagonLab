@@ -94,6 +94,10 @@ export interface WorkerRegistryRow {
   geowork_test: GeoworkStatus
   date_started: string | null
   notes: string | null
+  /** A real app_users account provisioned for this worker (see
+   *  POST /api/admin/users/invite), or null if this is still just an
+   *  operational record with no login. */
+  linked_user_id: string | null
   created_at: string
   updated_at: string
 }
@@ -369,6 +373,10 @@ export interface PartnerContactRow {
   source: string | null
   notes: string | null
   created_by: string | null
+  /** A real app_users account provisioned for this contact (see
+   *  POST /api/admin/users/invite), or null if this is still just a
+   *  CRM record with no login. */
+  linked_user_id: string | null
   created_at: string
 }
 

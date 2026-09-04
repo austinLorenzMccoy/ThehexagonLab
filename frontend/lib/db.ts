@@ -166,7 +166,7 @@ export async function fetchRegistryByPlatform(platformSlug: string): Promise<Wor
 }
 
 export async function insertRegistryRow(
-  row: Omit<WorkerRegistryRow, 'id' | 'created_at' | 'updated_at'>
+  row: Omit<WorkerRegistryRow, 'id' | 'created_at' | 'updated_at' | 'linked_user_id'>
 ): Promise<{ id: string | null; error: string | null }> {
   const supabase = createClient()
   const { data, error } = await supabase
@@ -279,6 +279,26 @@ export async function fetchAllUsers(): Promise<AppUser[]> {
   const { data, error } = await supabase.from('app_users').select('*').order('created_at')
   if (error) { console.error('fetchAllUsers:', error.message); return [] }
   return (data ?? []) as AppUser[]
+}
+
+/**
+ * Provisions a real account for someone who's so far only existed as
+ * an operational record (a Registry worker or Partner Contacts
+ * referrer) — see POST /api/admin/users/invite. Starts as role='worker'
+ * (the on_auth_user_created trigger default); an admin finishes
+ * role/platform setup on Admin > Manage Users afterward.
+ */
+export async function provisionAccount(
+  email: string, displayName?: string | null
+): Promise<{ userId: string | null; error: string | null }> {
+  const res = await fetch('/api/admin/users/invite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, displayName }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) return { userId: null, error: data.error ?? 'Could not create account' }
+  return { userId: data.userId ?? null, error: null }
 }
 
 // ── Onboarding ──────────────────────────────────────────────────
@@ -866,7 +886,7 @@ export async function fetchPartnerContacts(): Promise<PartnerContactRow[]> {
 }
 
 export async function insertPartnerContact(
-  entry: Omit<PartnerContactRow, 'id' | 'created_at'>
+  entry: Omit<PartnerContactRow, 'id' | 'created_at' | 'linked_user_id'>
 ): Promise<{ id: string | null; error: string | null }> {
   const supabase = createClient()
   const { data, error } = await supabase

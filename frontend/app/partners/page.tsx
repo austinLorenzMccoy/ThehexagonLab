@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
 import { AccessDenied } from '@/components/ui/access-denied'
-import { fetchPartnerContacts, insertPartnerContact, updatePartnerContact, deletePartnerContact } from '@/lib/db'
+import { fetchPartnerContacts, insertPartnerContact, updatePartnerContact, deletePartnerContact, provisionAccount } from '@/lib/db'
 import { ImportDialog, IMPORT_CONFIGS } from '@/components/import/import-dialog'
+import { PaystackRecipientForm } from '@/components/admin/paystack-recipient-form'
 import type { PartnerContactRow, PartnerContactType } from '@/types'
-import { Loader2, Contact, Plus, X, Pencil, Trash2, Upload } from 'lucide-react'
+import { Loader2, Contact, Plus, X, Pencil, Trash2, Upload, Link2, CircleCheck } from 'lucide-react'
 
 const TYPE_LABEL: Record<PartnerContactType, string> = {
   worker: 'Worker', referrer: 'Referrer', partner: 'Partner / Client',
@@ -27,7 +28,7 @@ const CREATABLE_TYPES: PartnerContactType[] = ['referrer', 'partner']
  *  import reuses the shared ImportDialog component (see
  *  components/import/import-dialog.tsx). */
 export default function PartnersPage() {
-  const { hasAccess, appUser, permissions } = useAuth()
+  const { hasAccess, hasRole, appUser, permissions } = useAuth()
   const { toast } = useToast()
   const [contacts, setContacts] = useState<PartnerContactRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,6 +36,10 @@ export default function PartnersPage() {
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState<PartnerContactType | null>(null)
   const [editingRow, setEditingRow] = useState<PartnerContactRow | null>(null)
+  const [newContactType, setNewContactType] = useState<PartnerContactType>('partner')
+  const [createAccount, setCreateAccount] = useState(false)
+  const [provisioning, setProvisioning] = useState(false)
+  const [justProvisioned, setJustProvisioned] = useState<{ userId: string; name: string } | null>(null)
 
   const reload = () => fetchPartnerContacts().then(setContacts)
 
@@ -47,19 +52,39 @@ export default function PartnersPage() {
   const handleAdd = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    const { error } = await insertPartnerContact({
-      name: fd.get('name') as string,
-      email: (fd.get('email') as string) || null,
+    const name = fd.get('name') as string
+    const email = (fd.get('email') as string) || null
+    const contactType = fd.get('contact_type') as PartnerContactType
+
+    const { id, error } = await insertPartnerContact({
+      name,
+      email,
       phone: (fd.get('phone') as string) || null,
       country: (fd.get('country') as string) || null,
-      contact_type: fd.get('contact_type') as PartnerContactType,
+      contact_type: contactType,
       source: 'Manual',
       notes: (fd.get('notes') as string) || null,
       created_by: appUser?.id ?? null,
     })
-    if (error) { toast(`Could not add contact: ${error}`, 'error'); return }
-    toast('Contact added', 'success')
+    if (error || !id) { toast(`Could not add contact: ${error}`, 'error'); return }
+
+    if (createAccount && contactType === 'referrer' && email) {
+      setProvisioning(true)
+      const { userId, error: provisionError } = await provisionAccount(email, name)
+      setProvisioning(false)
+      if (provisionError) {
+        toast(`Contact added, but account creation failed: ${provisionError}`, 'error')
+      } else if (userId) {
+        await updatePartnerContact(id, { linked_user_id: userId })
+        setJustProvisioned({ userId, name })
+        toast('Contact added and account created', 'success')
+      }
+    } else {
+      toast('Contact added', 'success')
+    }
+
     setShowForm(false)
+    setCreateAccount(false)
     setContacts(await fetchPartnerContacts())
   }
 
@@ -139,16 +164,60 @@ export default function PartnersPage() {
           <input name="email" type="email" placeholder="Email" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
           <input name="phone" placeholder="Phone" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
           <input name="country" placeholder="Country" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
-          <select name="contact_type" defaultValue="partner" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm">
+          <select
+            name="contact_type"
+            value={newContactType}
+            onChange={(e) => setNewContactType(e.target.value as PartnerContactType)}
+            className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm"
+          >
             {CREATABLE_TYPES.map((t) => (
               <option key={t} value={t}>{TYPE_LABEL[t]}</option>
             ))}
           </select>
           <input name="notes" placeholder="Notes" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
-          <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all sm:col-span-3">
-            Save Contact
+          {hasRole('admin') && newContactType === 'referrer' && (
+            <label className="flex items-center gap-2 cursor-pointer sm:col-span-3">
+              <input
+                type="checkbox"
+                checked={createAccount}
+                onChange={(e) => setCreateAccount(e.target.checked)}
+                className="rounded border-border-subtle accent-ops"
+              />
+              <span className="text-xs text-foreground">
+                Also create a login account for this person (requires email — lets you attach a Paystack payout code right away)
+              </span>
+            </label>
+          )}
+          <button type="submit" disabled={provisioning} className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-50 sm:col-span-3">
+            {provisioning ? 'Saving…' : 'Save Contact'}
           </button>
         </form>
+      )}
+
+      {/* Post-provisioning: attach a Paystack payout code right away */}
+      {justProvisioned && (
+        <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CircleCheck className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+              <p className="text-sm text-foreground">
+                Account created for <span className="font-medium">{justProvisioned.name}</span>.
+                Add their bank details now, or do it later from Admin &gt; Manage Users.
+              </p>
+            </div>
+            <button onClick={() => setJustProvisioned(null)} className="rounded p-1 hover:bg-muted shrink-0">
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="mt-2">
+            <PaystackRecipientForm
+              userId={justProvisioned.userId}
+              defaultAccountName={justProvisioned.name}
+              payoutCurrency="NGN"
+              onCreated={() => setJustProvisioned(null)}
+            />
+          </div>
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -188,6 +257,7 @@ export default function PartnersPage() {
             <thead className="border-b border-border-subtle bg-card">
               <tr>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Name</th>
+                <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Account</th>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Type</th>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Email</th>
                 <th className="px-3 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Phone</th>
@@ -199,6 +269,15 @@ export default function PartnersPage() {
               {filtered.map((c) => (
                 <tr key={c.id} className="bg-card hover:bg-muted/50 transition-colors">
                   <td className="px-3 py-2 font-medium text-foreground whitespace-nowrap">{c.name}</td>
+                  <td className="px-3 py-2">
+                    {c.linked_user_id ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400" title="Has a real login account">
+                        <Link2 className="h-3 w-3" /> Linked
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{TYPE_LABEL[c.contact_type]}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{c.email ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{c.phone ?? '—'}</td>
