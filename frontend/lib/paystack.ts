@@ -126,6 +126,25 @@ export async function listBanks(params?: { country?: string; currency?: string }
   return paystackFetch<PaystackBank[]>(`/bank?${qs.toString()}`)
 }
 
+interface PaystackResolvedAccount {
+  account_number: string
+  account_name: string
+  bank_id: number
+}
+
+/** Account Number Resolution (Identity Management API) — looks up the
+ *  real account holder name for a bank account before a transfer
+ *  recipient is created, so a mistyped account number gets caught
+ *  instead of silently paying out to the wrong person. Only works for
+ *  NUBAN-supporting (Nigerian) banks. */
+export async function resolveAccountNumber(params: {
+  accountNumber: string
+  bankCode: string
+}): Promise<PaystackResult<PaystackResolvedAccount>> {
+  const qs = new URLSearchParams({ account_number: params.accountNumber, bank_code: params.bankCode })
+  return paystackFetch<PaystackResolvedAccount>(`/bank/resolve?${qs.toString()}`)
+}
+
 /** Verifies Paystack's webhook signature — HMAC-SHA512 of the raw
  *  request body, keyed by the secret key (see
  *  https://paystack.com/docs/payments/webhooks/). Callers must pass
