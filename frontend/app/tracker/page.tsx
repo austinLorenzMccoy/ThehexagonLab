@@ -12,11 +12,12 @@ import {
   updateTrackerField,
   updateTrackerRow,
   updateTaskStatus,
+  insertTrackerRow,
   deleteTrackerRow,
   fetchAllUsers,
 } from '@/lib/db'
 import type { Platform, WorkerTrackerRow, PlatformTaskColumn, WarningLevel, YNStatus, AppUser } from '@/types'
-import { Download, Upload, Loader2, Trash2, Pencil, X } from 'lucide-react'
+import { Download, Upload, Loader2, Search, UserPlus, X, Trash2, Pencil } from 'lucide-react'
 import { ImportDialog, IMPORT_CONFIGS } from '@/components/import/import-dialog'
 
 const WARNING_OPTIONS: WarningLevel[] = ['🟢 Clear', '🟡 Minor', '🔴 Serious', '⚫ Banned', '➖ None']
@@ -33,6 +34,10 @@ export default function TrackerPage() {
   const [loading, setLoading] = useState(true)
   const [tableLoading, setTableLoading] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [warningFilter, setWarningFilter] = useState<string>('All')
+  const [managerFilter, setManagerFilter] = useState<string>('All')
   const [editingRow, setEditingRow] = useState<WorkerTrackerRow | null>(null)
 
   useEffect(() => {
@@ -140,6 +145,65 @@ export default function TrackerPage() {
 
   const activePlatform = platforms.find((p) => p.slug === selectedPlatform)
 
+  const managerLabel = (managerId: string | null) => {
+    if (!managerId) return 'Unassigned'
+    const m = managers.find((x) => x.id === managerId)
+    return m?.display_name ?? m?.email ?? 'Unassigned'
+  }
+
+  const filteredWorkers = workers.filter((worker) => {
+    const searchText = searchQuery.toLowerCase()
+    const matchesSearch =
+      !searchText ||
+      worker.worker_name.toLowerCase().includes(searchText) ||
+      worker.owner_name.toLowerCase().includes(searchText) ||
+      (worker.email ?? '').toLowerCase().includes(searchText) ||
+      (worker.platform_id_code ?? '').toLowerCase().includes(searchText)
+
+    const matchesWarning = warningFilter === 'All' || worker.warning_level === warningFilter
+    const matchesManager =
+      managerFilter === 'All' ||
+      (managerFilter === 'Unassigned' ? !worker.manager_id : worker.manager_id === managerFilter)
+
+    return matchesSearch && matchesWarning && matchesManager
+  })
+
+  const warningSummary = WARNING_OPTIONS.map((level) => ({
+    level,
+    count: workers.filter((worker) => worker.warning_level === level).length,
+  }))
+
+  const handleAddWorker = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    if (!activePlatform) return
+
+    const defaultTaskStatuses = Object.fromEntries(
+      taskColumns.map((column) => [column.column_key, '⏳ Pending' as YNStatus])
+    )
+
+    const { id, error } = await insertTrackerRow({
+      platform_id: activePlatform.id,
+      owner_name: (fd.get('owner_name') as string) || '',
+      manager_id: (fd.get('manager_id') as string) || null,
+      worker_name: (fd.get('worker_name') as string) || '',
+      email: (fd.get('email') as string) || null,
+      apple_connect_pw: (fd.get('apple_connect_pw') as string) || null,
+      platform_id_code: (fd.get('platform_id_code') as string) || null,
+      payoneer_linked: '⏳ Pending',
+      warning_level: '➖ None',
+      sow_done: '⏳ Pending',
+      le_cert: '➖ N/A',
+      task_statuses: defaultTaskStatuses,
+      notes: (fd.get('notes') as string) || null,
+    })
+
+    if (!error && id) {
+      setShowForm(false)
+      loadTrackerData(selectedPlatform)
+    }
+  }
+
   return (
     <>
     <div className="space-y-6">
@@ -152,6 +216,13 @@ export default function TrackerPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowForm((prev) => !prev)}
+            className="flex items-center gap-2 rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all"
+          >
+            {showForm ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+            {showForm ? 'Cancel' : 'Add Worker'}
+          </button>
           <button
             onClick={() => setShowImport(true)}
             className="flex items-center gap-2 rounded-lg border border-ops/20 bg-ops/5 px-4 py-2 text-sm font-medium text-ops hover:bg-ops/10 transition-colors"
@@ -168,6 +239,50 @@ export default function TrackerPage() {
           </button>
         </div>
       </div>
+
+      {showForm && activePlatform && (
+        <form onSubmit={handleAddWorker} className="space-y-4 rounded-lg border border-ops/20 bg-ops/5 p-6">
+          <h3 className="font-semibold text-foreground">Add New Worker</h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">Worker Name *</label>
+              <input name="worker_name" required className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">Owner Name *</label>
+              <input name="owner_name" required className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">Manager</label>
+              <select name="manager_id" defaultValue="" className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                <option value="">Unassigned</option>
+                {managers.map((m) => (
+                  <option key={m.id} value={m.id}>{m.display_name ?? m.email}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">Email</label>
+              <input name="email" type="email" className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">Platform ID</label>
+              <input name="platform_id_code" className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">Password / Apple Connect</label>
+              <input name="apple_connect_pw" className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div className="sm:col-span-2 lg:col-span-3">
+              <label className="mb-1 block text-sm font-medium text-foreground">Notes</label>
+              <textarea name="notes" rows={2} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+          </div>
+          <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
+            Save Worker
+          </button>
+        </form>
+      )}
 
       {/* Platform tabs */}
       <div className="flex flex-wrap gap-2">
@@ -191,15 +306,63 @@ export default function TrackerPage() {
         ))}
       </div>
 
+      <div className="space-y-4 rounded-lg border border-border-subtle bg-card p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search workers..."
+              className="w-full rounded-lg border border-border-subtle bg-background pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={managerFilter}
+              onChange={(e) => setManagerFilter(e.target.value)}
+              className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50"
+            >
+              <option value="All">All managers</option>
+              <option value="Unassigned">Unassigned</option>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>{m.display_name ?? m.email}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setWarningFilter('All')}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${warningFilter === 'All' ? 'bg-ops text-white' : 'border border-border-subtle text-muted-foreground hover:bg-muted'}`}
+          >
+            Warning summary ({workers.length})
+          </button>
+          {warningSummary.map(({ level, count }) => (
+            <button
+              key={level}
+              onClick={() => setWarningFilter(level)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${warningFilter === level ? 'bg-ops text-white' : 'border border-border-subtle text-muted-foreground hover:bg-muted'}`}
+            >
+              {level} ({count})
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Data table */}
       {tableLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
-      ) : workers.length === 0 ? (
+      ) : filteredWorkers.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-border-subtle bg-card py-12">
           <p className="text-muted-foreground">
-            No workers tracked for {activePlatform?.label ?? 'this platform'} yet.
+            {searchQuery || warningFilter !== 'All' || managerFilter !== 'All'
+              ? 'No workers match the current search and filters.'
+              : `No workers tracked for ${activePlatform?.label ?? 'this platform'} yet.`}
           </p>
         </div>
       ) : (
@@ -223,7 +386,7 @@ export default function TrackerPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {workers.map((worker) => (
+              {filteredWorkers.map((worker) => (
                 <tr key={worker.id} className="bg-card hover:bg-muted/50 transition-colors">
                   <td className="px-3 py-2">
                     <div>
@@ -433,7 +596,7 @@ export default function TrackerPage() {
                 <button type="button" onClick={() => setEditingRow(null)} className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
                   Cancel
                 </button>
-                <button type="submit" className="rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors">
+                <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
                   Save Changes
                 </button>
               </div>
