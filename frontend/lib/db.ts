@@ -11,7 +11,7 @@ import type {
   WorkerTimesheetRow, PaySlipRow, PaymentRow, WarningEventRow,
   WorkerFeedbackRow, DisputeRow, ReferralRow, PayoutRequestRow,
   PartnerContactRow, WorkerEarningsSummaryRow, ReferralSummaryRow,
-  PlatformRevenueSplit, WorkerRevenueOverride, ReferralRevenueOverride, ResolvedRevenueSplit,
+  PlatformRevenueSplit, WorkerRevenueOverride, ReferralRevenueOverride, ReferrerRevenueOverride, ResolvedRevenueSplit,
   WorkerTimesheetEarningsRow,
 } from '@/types'
 
@@ -951,18 +951,39 @@ export async function upsertReferralRevenueOverride(
   return { error: error?.message ?? null }
 }
 
+export async function fetchReferrerRevenueOverride(referrerUserId: string): Promise<ReferrerRevenueOverride | null> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('referrer_revenue_overrides').select('*').eq('referrer_user_id', referrerUserId).maybeSingle()
+  if (error) { console.error('fetchReferrerRevenueOverride:', error.message); return null }
+  return data as ReferrerRevenueOverride | null
+}
+
+export async function upsertReferrerRevenueOverride(
+  entry: Omit<ReferrerRevenueOverride, 'updated_at'>
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('referrer_revenue_overrides').upsert(entry as any, { onConflict: 'referrer_user_id' })
+  return { error: error?.message ?? null }
+}
+
 /**
  * Resolves the effective 4-way split for a worker: worker-level
  * override wins, falling back to the platform's default; referral %
- * additionally checks a per-referral override. Non-admin callers get
- * all zeros back (RLS silently returns no rows), which is the correct
- * "silo" behavior — only admin can ever see real percentages.
+ * checks a per-referral override first, then that referrer's default
+ * rate (referrer_revenue_overrides), then the platform default. Pass
+ * `referrerUserId` when the referral relationship is known but no
+ * specific referral row applies yet. Non-admin callers get all zeros
+ * back (RLS silently returns no rows), which is the correct "silo"
+ * behavior — only admin can ever see real percentages.
  */
 export async function resolveRevenueSplit(
-  workerUserId: string, platformId: number | null, referralId?: string | null
+  workerUserId: string, platformId: number | null,
+  referralId?: string | null, referrerUserId?: string | null
 ): Promise<ResolvedRevenueSplit> {
   const supabase = createClient()
-  const [platformRes, workerRes, referralRes] = await Promise.all([
+  const [platformRes, workerRes, referralRes, referrerRes] = await Promise.all([
     platformId
       ? supabase.from('platform_revenue_splits').select('*').eq('platform_id', platformId).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -970,15 +991,21 @@ export async function resolveRevenueSplit(
     referralId
       ? supabase.from('referral_revenue_overrides').select('*').eq('referral_id', referralId).maybeSingle()
       : Promise.resolve({ data: null }),
+    referrerUserId
+      ? supabase.from('referrer_revenue_overrides').select('*').eq('referrer_user_id', referrerUserId).maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
 
   const platformSplit = platformRes.data as any
   const workerOverride = workerRes.data as any
   const referralOverride = referralRes.data as any
+  const referrerOverride = referrerRes.data as any
 
   const client = workerOverride?.client_percentage ?? platformSplit?.client_percentage ?? 0
   const company = workerOverride?.company_percentage ?? platformSplit?.company_percentage ?? 0
-  const referral = referralOverride?.referral_percentage ?? platformSplit?.referral_percentage ?? 0
+  const referral = referralOverride?.referral_percentage
+    ?? referrerOverride?.referral_percentage
+    ?? platformSplit?.referral_percentage ?? 0
   const worker = workerOverride?.worker_percentage ?? platformSplit?.worker_percentage
     ?? Math.max(0, 100 - client - company - referral)
 

@@ -3,9 +3,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
-import { fetchReferralSummary, fetchReferrals, fetchMyPayoutRequests, requestPayout } from '@/lib/db'
-import type { ReferralSummaryRow, ReferralRow, PayoutRequestRow } from '@/types'
-import { Loader2, Users, Trophy, DollarSign, Lock } from 'lucide-react'
+import {
+  fetchReferralSummary, fetchReferrals, fetchMyPayoutRequests, requestPayout,
+  fetchMyFeedback, submitFeedback,
+} from '@/lib/db'
+import type { ReferralSummaryRow, ReferralRow, PayoutRequestRow, WorkerFeedbackRow, FeedbackCategory } from '@/types'
+import { Loader2, Users, Trophy, DollarSign, Lock, MessageSquare } from 'lucide-react'
 
 const STATUS_STYLE: Record<ReferralRow['status'], string> = {
   pending: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -27,16 +30,18 @@ export function ReferrerPortal() {
   const [summary, setSummary] = useState<ReferralSummaryRow | null>(null)
   const [referrals, setReferrals] = useState<ReferralRow[]>([])
   const [payouts, setPayouts] = useState<PayoutRequestRow[]>([])
+  const [feedback, setFeedback] = useState<WorkerFeedbackRow[]>([])
   const [loading, setLoading] = useState(true)
   const [requesting, setRequesting] = useState(false)
 
   const load = useCallback(async () => {
-    const [s, r, p] = await Promise.all([
+    const [s, r, p, fb] = await Promise.all([
       fetchReferralSummary(referrerId),
       fetchReferrals(referrerId),
       fetchMyPayoutRequests(referrerId),
+      fetchMyFeedback(referrerId),
     ])
-    setSummary(s); setReferrals(r); setPayouts(p)
+    setSummary(s); setReferrals(r); setPayouts(p); setFeedback(fb)
     setLoading(false)
   }, [referrerId])
 
@@ -55,6 +60,21 @@ export function ReferrerPortal() {
     setRequesting(false)
     if (error) { toast(`Payout request blocked: ${error}`, 'error'); return }
     toast('Payout requested — an admin will review it', 'success')
+    load()
+  }
+
+  const handleFeedback = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const { error } = await submitFeedback({
+      worker_user_id: referrerId,
+      category: fd.get('category') as FeedbackCategory,
+      subject: fd.get('subject') as string,
+      message: fd.get('message') as string,
+    })
+    if (error) { toast(`Could not submit feedback: ${error}`, 'error'); return }
+    toast('Feedback submitted — only Admins can view this', 'success')
+    ;(e.target as HTMLFormElement).reset()
     load()
   }
 
@@ -184,6 +204,37 @@ export function ReferrerPortal() {
           </div>
         </div>
       )}
+
+      {/* Feedback */}
+      <div className="rounded-lg border border-border-subtle bg-card p-4">
+        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <MessageSquare className="h-4 w-4" /> Submit Feedback
+        </h2>
+        <p className="text-[10px] text-muted-foreground mb-2">Only Admins can see this.</p>
+        <form onSubmit={handleFeedback} className="space-y-2">
+          <select name="category" className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm">
+            <option value="process">Referral process</option>
+            <option value="platform">Platform</option>
+            <option value="other">Other</option>
+          </select>
+          <input name="subject" required placeholder="Subject"
+            className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
+          <textarea name="message" required rows={2} placeholder="Your feedback"
+            className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
+          <button type="submit" className="w-full rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
+            Submit Feedback
+          </button>
+        </form>
+        {feedback.length > 0 && (
+          <div className="mt-3 space-y-1.5 max-h-28 overflow-y-auto">
+            {feedback.map((f) => (
+              <div key={f.id} className="rounded bg-background/50 px-3 py-1.5 text-xs text-muted-foreground">
+                {f.subject} — {new Date(f.created_at).toLocaleDateString()}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

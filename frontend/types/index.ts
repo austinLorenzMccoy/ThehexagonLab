@@ -426,6 +426,15 @@ export interface ReferralRevenueOverride {
   updated_at: string
 }
 
+/** A referrer's default commission % — falls back to the platform
+ *  default, and is itself overridden by a per-referral rate when one
+ *  is set (see ReferralRevenueOverride). */
+export interface ReferrerRevenueOverride {
+  referrer_user_id: string
+  referral_percentage: number | null
+  updated_at: string
+}
+
 /** Effective 4-way split after resolving overrides -> platform default -> 0. */
 export interface ResolvedRevenueSplit {
   client_percentage: number

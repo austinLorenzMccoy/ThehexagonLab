@@ -6,6 +6,7 @@ import { AccessDenied } from '@/components/ui/access-denied'
 import { fetchPlatforms } from '@/lib/db'
 import { PlatformManager } from '@/components/admin/platform-manager'
 import { WorkerRevenueOverridePanel } from '@/components/admin/worker-revenue-override-panel'
+import { ReferrerRevenueOverridePanel } from '@/components/admin/referrer-revenue-override-panel'
 import { PaystackRecipientForm } from '@/components/admin/paystack-recipient-form'
 import type { UserRole, AppUser, Platform } from '@/types'
 import { Settings, Shield, Users, Loader2, Check, X, UserX, UserCheck, Trash2, Layers } from 'lucide-react'
@@ -476,6 +477,11 @@ export default function AdminPage() {
                       {/* Revenue split override — workers only, own self-contained load/save */}
                       {editState!.role === 'worker' && (
                         <WorkerRevenueOverridePanel workerUserId={user.id} />
+                      )}
+
+                      {/* Default referral commission % — referrers only, own self-contained load/save */}
+                      {editState!.role === 'referrer' && (
+                        <ReferrerRevenueOverridePanel referrerUserId={user.id} />
                       )}
 
                       {/* Paystack payout recipient code — workers/referrers only */}
