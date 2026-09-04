@@ -20,6 +20,7 @@ import {
   UserPlus,
   Contact,
   Receipt,
+  UserCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,12 @@ const channels = [
     label: 'Dashboard',
     icon: LayoutDashboard,
     href: '/dashboard',
+  },
+  {
+    id: 'my-team',
+    label: 'My Team',
+    icon: UserCheck,
+    href: '/my-team',
   },
   {
     id: 'tracker',

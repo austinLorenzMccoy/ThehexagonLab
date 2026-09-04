@@ -5,12 +5,12 @@ import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
 import { AccessDenied } from '@/components/ui/access-denied'
 import {
-  fetchAllReferrals, updateReferralStatus, addReferral,
+  fetchAllReferrals, updateReferralStatus, addReferral, updateReferral, deleteReferral,
   fetchAllPayoutRequests, updatePayoutRequest, fetchAllUsers,
   fetchAllReferralRevenueOverrides, upsertReferralRevenueOverride,
 } from '@/lib/db'
 import type { ReferralRow, ReferralStatus, PayoutRequestRow, AppUser, ReferralRevenueOverride } from '@/types'
-import { Loader2, UserPlus, Wallet, Plus } from 'lucide-react'
+import { Loader2, UserPlus, Wallet, Plus, Pencil, Trash2, X } from 'lucide-react'
 
 const REFERRAL_STATUSES: ReferralStatus[] = ['pending', 'active', 'paid']
 
@@ -29,6 +29,7 @@ export default function ReferralsAdminPage() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [savingCommissionId, setSavingCommissionId] = useState<string | null>(null)
+  const [editingRow, setEditingRow] = useState<ReferralRow | null>(null)
 
   const load = useCallback(async () => {
     const [r, p, users, co] = await Promise.all([
@@ -62,6 +63,29 @@ export default function ReferralsAdminPage() {
   const handleStatus = async (id: string, status: ReferralStatus) => {
     const { error } = await updateReferralStatus(id, status)
     if (error) { toast(`Could not update: ${error}`, 'error'); return }
+    load()
+  }
+
+  const handleSaveEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!editingRow) return
+    const fd = new FormData(e.currentTarget)
+    const { error } = await updateReferral(editingRow.id, {
+      referrer_user_id: fd.get('referrer_user_id') as string,
+      referred_name: fd.get('referred_name') as string,
+      referred_email: (fd.get('referred_email') as string) || null,
+    })
+    if (error) { toast(`Could not update referral: ${error}`, 'error'); return }
+    toast('Referral updated', 'success')
+    setEditingRow(null)
+    load()
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this referral? This also removes its commission % override.')) return
+    const { error } = await deleteReferral(id)
+    if (error) { toast(`Could not delete: ${error}`, 'error'); return }
+    toast('Referral deleted', 'success')
     load()
   }
 
@@ -126,6 +150,7 @@ export default function ReferralsAdminPage() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
@@ -179,6 +204,7 @@ export default function ReferralsAdminPage() {
                   <th className="py-2 pr-3">Commission</th>
                   <th className="py-2 pr-3">Commission % (admin-only)</th>
                   <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 pr-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
@@ -205,6 +231,16 @@ export default function ReferralsAdminPage() {
                       >
                         {REFERRAL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setEditingRow(r)} className="p-1 rounded hover:bg-ops/10 transition-colors" title="Edit referral">
+                          <Pencil className="h-3.5 w-3.5 text-ops" />
+                        </button>
+                        <button onClick={() => handleDelete(r.id)} className="p-1 rounded hover:bg-red-500/10 transition-colors" title="Delete referral">
+                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -256,5 +292,46 @@ export default function ReferralsAdminPage() {
         )}
       </div>
     </div>
+
+    {/* Edit Modal */}
+    {editingRow && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="w-full max-w-lg mx-4 rounded-xl border border-border-subtle bg-card shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
+            <h2 className="text-lg font-semibold text-foreground">Edit Referral</h2>
+            <button onClick={() => setEditingRow(null)} className="rounded p-1 hover:bg-muted">
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <form onSubmit={handleSaveEdit} className="px-6 py-4 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Referrer</label>
+              <select name="referrer_user_id" required defaultValue={editingRow.referrer_user_id} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                {referrers.map((r) => (
+                  <option key={r.id} value={r.id}>{r.display_name ?? r.email} ({r.referral_code})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Referred Name *</label>
+              <input name="referred_name" required defaultValue={editingRow.referred_name} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Referred Email</label>
+              <input name="referred_email" type="email" defaultValue={editingRow.referred_email ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setEditingRow(null)} className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
+                Cancel
+              </button>
+              <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

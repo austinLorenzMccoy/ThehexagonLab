@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PROTECTED     = ['/dashboard','/tracker','/registry','/onboarding','/orders','/payroll','/reports','/worker','/activity','/audit','/admin',
+const PROTECTED     = ['/dashboard','/my-team','/tracker','/registry','/onboarding','/orders','/payroll','/reports','/worker','/activity','/audit','/admin',
                         '/warnings','/disputes','/feedback','/referrals','/partners','/pay-slips']
 // Managers manage Pay Slips instead of Warnings & Disputes, which are
 // admin-only from here (see 20260903010000_manager_permission_swap.sql).

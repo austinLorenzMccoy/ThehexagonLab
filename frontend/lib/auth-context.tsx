@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                    'warnings', 'disputes', 'feedback', 'referrals', 'partners', 'pay-slips'],
       // Managers manage Pay Slips (issue + settle month-end payment)
       // instead of Warnings & Disputes, which are admin-only.
-      manager:    ['dashboard', 'tracker', 'registry', 'onboarding', 'payroll', 'reports',
+      manager:    ['dashboard', 'my-team', 'tracker', 'registry', 'onboarding', 'payroll', 'reports',
                    'partners', 'pay-slips',
                    ...(appUser.can_view_orders ? ['orders'] : [])],
       supervisor: ['dashboard', 'tracker', 'registry',

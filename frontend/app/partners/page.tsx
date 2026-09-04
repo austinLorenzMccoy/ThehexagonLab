@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
 import { AccessDenied } from '@/components/ui/access-denied'
-import { fetchPartnerContacts, insertPartnerContact, deletePartnerContact } from '@/lib/db'
+import { fetchPartnerContacts, insertPartnerContact, updatePartnerContact, deletePartnerContact } from '@/lib/db'
 import { ImportDialog, IMPORT_CONFIGS } from '@/components/import/import-dialog'
 import type { PartnerContactRow, PartnerContactType } from '@/types'
-import { Loader2, Contact, Plus, X, Trash2, Upload } from 'lucide-react'
+import { Loader2, Contact, Plus, X, Pencil, Trash2, Upload } from 'lucide-react'
 
 const TYPE_LABEL: Record<PartnerContactType, string> = {
   worker: 'Worker', referrer: 'Referrer', partner: 'Partner / Client',
@@ -25,6 +25,7 @@ export default function PartnersPage() {
   const [showForm, setShowForm] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState<PartnerContactType | null>(null)
+  const [editingRow, setEditingRow] = useState<PartnerContactRow | null>(null)
 
   const reload = () => fetchPartnerContacts().then(setContacts)
 
@@ -60,6 +61,24 @@ export default function PartnersPage() {
     setContacts((prev) => prev.filter((c) => c.id !== id))
   }
 
+  const handleSaveEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!editingRow) return
+    const fd = new FormData(e.currentTarget)
+    const { error } = await updatePartnerContact(editingRow.id, {
+      name: fd.get('name') as string,
+      email: (fd.get('email') as string) || null,
+      phone: (fd.get('phone') as string) || null,
+      country: (fd.get('country') as string) || null,
+      contact_type: fd.get('contact_type') as PartnerContactType,
+      notes: (fd.get('notes') as string) || null,
+    })
+    if (error) { toast(`Could not update: ${error}`, 'error'); return }
+    toast('Contact updated', 'success')
+    setEditingRow(null)
+    setContacts(await fetchPartnerContacts())
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -71,6 +90,7 @@ export default function PartnersPage() {
   const filtered = filter ? contacts.filter((c) => c.contact_type === filter) : contacts
 
   return (
+    <>
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
@@ -176,9 +196,14 @@ export default function PartnersPage() {
                   <td className="px-3 py-2 text-xs text-foreground">{c.country ?? '—'}</td>
                   <td className="px-3 py-2">
                     {permissions?.canManagePartnerContacts && (
-                      <button onClick={() => handleDelete(c.id)} className="p-1 rounded hover:bg-red-500/10 transition-colors" title="Delete contact">
-                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setEditingRow(c)} className="p-1 rounded hover:bg-ops/10 transition-colors" title="Edit contact">
+                          <Pencil className="h-3.5 w-3.5 text-ops" />
+                        </button>
+                        <button onClick={() => handleDelete(c.id)} className="p-1 rounded hover:bg-red-500/10 transition-colors" title="Delete contact">
+                          <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -188,5 +213,60 @@ export default function PartnersPage() {
         </div>
       )}
     </div>
+
+    {/* Edit Modal */}
+    {editingRow && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="w-full max-w-lg mx-4 rounded-xl border border-border-subtle bg-card shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
+            <h2 className="text-lg font-semibold text-foreground">Edit Contact</h2>
+            <button onClick={() => setEditingRow(null)} className="rounded p-1 hover:bg-muted">
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <form onSubmit={handleSaveEdit} className="px-6 py-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Name *</label>
+                <input name="name" required defaultValue={editingRow.name} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Type</label>
+                <select name="contact_type" defaultValue={editingRow.contact_type} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                  {(Object.keys(TYPE_LABEL) as PartnerContactType[]).map((t) => (
+                    <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Email</label>
+                <input name="email" type="email" defaultValue={editingRow.email ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Phone</label>
+                <input name="phone" defaultValue={editingRow.phone ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Country</label>
+                <input name="country" defaultValue={editingRow.country ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
+              <textarea name="notes" rows={2} defaultValue={editingRow.notes ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setEditingRow(null)} className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
+                Cancel
+              </button>
+              <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
