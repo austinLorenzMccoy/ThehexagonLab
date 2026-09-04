@@ -598,6 +598,28 @@ export async function recordPaySlipPayment(
   return { id, error: error?.message ?? null }
 }
 
+/**
+ * Reverses a mistaken "Mark Paid" — deletes the slip's active payment
+ * row (status 'paid' or 'processing'; `idx_payments_one_active_per_slip`
+ * guarantees at most one). This does NOT touch Paystack — it only
+ * clears the local record, so only use it for a manually-recorded
+ * payment or a transfer that never actually happened. Once reversed,
+ * the pay slip itself becomes editable/deletable again.
+ */
+export async function unmarkPaySlipPaid(
+  paySlipId: string, actorId?: string
+): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('payments').delete().eq('pay_slip_id', paySlipId).in('status', ['paid', 'processing'])
+  if (!error && actorId) {
+    await logAudit({
+      userId: actorId, action: 'pay_slip_payment_reversed', entityType: 'pay_slips', entityId: paySlipId,
+    })
+  }
+  return { error: error?.message ?? null }
+}
+
 // -- Warnings (progressive escalation, 5 = auto-termination) ---------
 
 export async function fetchWarnings(workerUserId: string): Promise<WarningEventRow[]> {

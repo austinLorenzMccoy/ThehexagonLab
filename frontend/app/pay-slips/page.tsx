@@ -14,11 +14,12 @@ import {
   uploadPaySlipFile,
   getPaySlipFileUrl,
   recordPaySlipPayment,
+  unmarkPaySlipPaid,
   fetchPlatforms,
   resolveRevenueSplit,
 } from '@/lib/db'
 import type { WorkerEarningsSummaryRow, PaySlipRow, PaymentRow, PaySlipMonth, Platform, ResolvedRevenueSplit } from '@/types'
-import { Loader2, Receipt, Upload, FileText, Wallet, Check, Percent, Pencil, Trash2, X } from 'lucide-react'
+import { Loader2, Receipt, Upload, FileText, Wallet, Check, Percent, Pencil, Trash2, X, RotateCcw } from 'lucide-react'
 
 const MONTHS: PaySlipMonth[] = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -42,6 +43,7 @@ export default function PaySlipsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [payingId, setPayingId] = useState<string | null>(null)
   const [editingRow, setEditingRow] = useState<PaySlipRow | null>(null)
+  const [unmarkingId, setUnmarkingId] = useState<string | null>(null)
 
   // Revenue split calculator (admin-only — see resolveRevenueSplit).
   // Mirrors the worker/platform selects in the form below so the
@@ -152,6 +154,19 @@ export default function PaySlipsPage() {
     const { error } = await deletePaySlip(id, appUser?.id)
     if (error) { toast(`Could not delete: ${error}`, 'error'); return }
     toast('Pay slip deleted', 'success')
+    load()
+  }
+
+  /** Reverses a mistaken Mark Paid — clears the payment record so the
+   *  slip becomes editable/deletable again. Does not touch Paystack;
+   *  only use this for a manual/mistaken record, not a real transfer. */
+  const handleUnmarkPaid = async (id: string) => {
+    if (!window.confirm('Unmark this pay slip as paid? This only clears the local payment record — it does not reverse a real Paystack transfer.')) return
+    setUnmarkingId(id)
+    const { error } = await unmarkPaySlipPaid(id, appUser?.id)
+    setUnmarkingId(null)
+    if (error) { toast(`Could not unmark as paid: ${error}`, 'error'); return }
+    toast('Payment reversed — pay slip is editable again', 'success')
     load()
   }
 
@@ -351,9 +366,19 @@ export default function PaySlipsPage() {
                       </td>
                       <td className="py-2 pr-3">
                         {paid ? (
-                          <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">
-                            <Check className="h-3 w-3" /> Paid
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-600 dark:text-green-400">
+                              <Check className="h-3 w-3" /> Paid
+                            </span>
+                            <button
+                              onClick={() => handleUnmarkPaid(s.id)}
+                              disabled={unmarkingId === s.id}
+                              className="flex items-center gap-1 rounded-full border border-border-subtle px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                              title="Reverses a mistaken Mark Paid — does not touch a real Paystack transfer"
+                            >
+                              <RotateCcw className="h-3 w-3" /> {unmarkingId === s.id ? 'Undoing…' : 'Undo'}
+                            </button>
+                          </div>
                         ) : inFlight ? (
                           <span className="flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
                             <Loader2 className="h-3 w-3 animate-spin" /> Awaiting confirmation
