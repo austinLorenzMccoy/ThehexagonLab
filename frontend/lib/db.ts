@@ -80,6 +80,20 @@ export async function updateTrackerField(
   return { error: error?.message ?? null }
 }
 
+/** Multi-field save for the Edit modal — covers fields with no inline
+ *  cell in the Tracker table (email, apple_connect_pw,
+ *  platform_id_code, notes) alongside the ones that are also
+ *  inline-editable there, so there is one place to fix everything at
+ *  once. */
+export async function updateTrackerRow(
+  rowId: string, updates: Partial<WorkerTrackerRow>
+): Promise<{ error: string | null }> {
+  const supabase = createClient() as any
+  const { error } = await supabase
+    .from('worker_tracker').update(updates).eq('id', rowId)
+  return { error: error?.message ?? null }
+}
+
 export async function updateTaskStatus(
   rowId: string, columnKey: string, newStatus: string
 ): Promise<{ error: string | null }> {

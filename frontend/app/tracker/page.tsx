@@ -10,12 +10,13 @@ import {
   fetchTrackerByPlatform,
   fetchPlatformTaskColumns,
   updateTrackerField,
+  updateTrackerRow,
   updateTaskStatus,
   deleteTrackerRow,
   fetchAllUsers,
 } from '@/lib/db'
 import type { Platform, WorkerTrackerRow, PlatformTaskColumn, WarningLevel, YNStatus, AppUser } from '@/types'
-import { Download, Upload, Loader2, Trash2 } from 'lucide-react'
+import { Download, Upload, Loader2, Trash2, Pencil, X } from 'lucide-react'
 import { ImportDialog, IMPORT_CONFIGS } from '@/components/import/import-dialog'
 
 const WARNING_OPTIONS: WarningLevel[] = ['🟢 Clear', '🟡 Minor', '🔴 Serious', '⚫ Banned', '➖ None']
@@ -32,6 +33,7 @@ export default function TrackerPage() {
   const [loading, setLoading] = useState(true)
   const [tableLoading, setTableLoading] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [editingRow, setEditingRow] = useState<WorkerTrackerRow | null>(null)
 
   useEffect(() => {
     fetchPlatforms().then((data) => {
@@ -102,6 +104,30 @@ export default function TrackerPage() {
     if (error) { toast(`Could not delete entry: ${error}`, 'error'); return }
     setWorkers((prev) => prev.filter((w) => w.id !== rowId))
     toast('Entry deleted', 'success')
+  }
+
+  const handleSaveRow = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!editingRow) return
+    const fd = new FormData(e.currentTarget)
+    const updates: Partial<WorkerTrackerRow> = {
+      worker_name: (fd.get('worker_name') as string) || editingRow.worker_name,
+      owner_name: (fd.get('owner_name') as string) || editingRow.owner_name,
+      manager_id: (fd.get('manager_id') as string) || null,
+      email: (fd.get('email') as string) || null,
+      apple_connect_pw: (fd.get('apple_connect_pw') as string) || null,
+      platform_id_code: (fd.get('platform_id_code') as string) || null,
+      payoneer_linked: fd.get('payoneer_linked') as YNStatus,
+      warning_level: fd.get('warning_level') as WarningLevel,
+      sow_done: fd.get('sow_done') as YNStatus,
+      le_cert: fd.get('le_cert') as YNStatus,
+      notes: (fd.get('notes') as string) || null,
+    }
+    const { error } = await updateTrackerRow(editingRow.id, updates)
+    if (error) { toast(`Could not update entry: ${error}`, 'error'); return }
+    setWorkers((prev) => prev.map((w) => (w.id === editingRow.id ? { ...w, ...updates } : w)))
+    toast('Entry updated', 'success')
+    setEditingRow(null)
   }
 
   if (loading) {
@@ -299,13 +325,22 @@ export default function TrackerPage() {
                     </td>
                   ))}
                   <td className="px-3 py-2">
-                    <button
-                      onClick={() => handleDelete(worker.id)}
-                      className="rounded p-1 hover:bg-red-500/10 transition-colors"
-                      title="Delete entry"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setEditingRow(worker)}
+                        className="rounded p-1 hover:bg-ops/10 transition-colors"
+                        title="Edit entry"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-ops" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(worker.id)}
+                        className="rounded p-1 hover:bg-red-500/10 transition-colors"
+                        title="Delete entry"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -321,6 +356,90 @@ export default function TrackerPage() {
           onComplete={() => { setShowImport(false); loadTrackerData(selectedPlatform) }}
           onClose={() => setShowImport(false)}
         />
+      )}
+
+      {/* Edit Modal — covers email/apple_connect_pw/platform_id_code/notes,
+          which have no inline cell in the table above */}
+      {editingRow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-lg mx-4 rounded-xl border border-border-subtle bg-card shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
+              <h2 className="text-lg font-semibold text-foreground">Edit Tracker Entry</h2>
+              <button onClick={() => setEditingRow(null)} className="rounded p-1 hover:bg-muted">
+                <X className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveRow} className="px-6 py-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Worker Name *</label>
+                  <input name="worker_name" required defaultValue={editingRow.worker_name} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Owner Name *</label>
+                  <input name="owner_name" required defaultValue={editingRow.owner_name} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Manager</label>
+                  <select name="manager_id" defaultValue={editingRow.manager_id ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                    <option value="">Unassigned</option>
+                    {managers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.display_name ?? m.email}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Email</label>
+                  <input name="email" type="email" defaultValue={editingRow.email ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Apple Connect Password</label>
+                  <input name="apple_connect_pw" defaultValue={editingRow.apple_connect_pw ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Platform ID Code</label>
+                  <input name="platform_id_code" defaultValue={editingRow.platform_id_code ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Payoneer Linked</label>
+                  <select name="payoneer_linked" defaultValue={editingRow.payoneer_linked} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                    {STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Warning Level</label>
+                  <select name="warning_level" defaultValue={editingRow.warning_level} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                    {WARNING_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">SOW Done</label>
+                  <select name="sow_done" defaultValue={editingRow.sow_done} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                    {STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">LE Cert</label>
+                  <select name="le_cert" defaultValue={editingRow.le_cert} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                    {STATUS_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
+                <textarea name="notes" rows={2} defaultValue={editingRow.notes ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setEditingRow(null)} className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" className="rounded-lg bg-ops px-4 py-2 text-sm font-medium text-white hover:bg-ops-dark transition-colors">
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </>
   )
