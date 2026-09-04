@@ -13,10 +13,19 @@ const TYPE_LABEL: Record<PartnerContactType, string> = {
   worker: 'Worker', referrer: 'Referrer', partner: 'Partner / Client',
 }
 
-/** Partner / contact records — builds a reusable contact database from
- *  workers, referrers, and upstream partners for future outreach.
- *  Bulk Excel/CSV import reuses the shared ImportDialog component
- *  (see components/import/import-dialog.tsx). */
+// Workers are already registered on the Registry page — this contact
+// book is for people with no account in the system yet, so "Worker"
+// is deliberately not offered when adding/editing a contact here.
+// TYPE_LABEL keeps the 'worker' entry so any legacy row still renders
+// a real label instead of "undefined".
+const CREATABLE_TYPES: PartnerContactType[] = ['referrer', 'partner']
+
+/** Partner / contact records — a CRM-style outreach book for people
+ *  with no account in the system yet (referrers, upstream partners).
+ *  Workers are already tracked on the Registry page, so "Worker" is
+ *  not offered as a type here — see CREATABLE_TYPES. Bulk Excel/CSV
+ *  import reuses the shared ImportDialog component (see
+ *  components/import/import-dialog.tsx). */
 export default function PartnersPage() {
   const { hasAccess, appUser, permissions } = useAuth()
   const { toast } = useToast()
@@ -96,7 +105,7 @@ export default function PartnersPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Partner Contacts</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Workers, referrers, and upstream partners — one reusable contact database
+            Referrers and upstream partners — one reusable contact database for people not yet in the system
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -131,7 +140,7 @@ export default function PartnersPage() {
           <input name="phone" placeholder="Phone" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
           <input name="country" placeholder="Country" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm" />
           <select name="contact_type" defaultValue="partner" className="rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm">
-            {(Object.keys(TYPE_LABEL) as PartnerContactType[]).map((t) => (
+            {CREATABLE_TYPES.map((t) => (
               <option key={t} value={t}>{TYPE_LABEL[t]}</option>
             ))}
           </select>
@@ -233,7 +242,10 @@ export default function PartnersPage() {
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Type</label>
                 <select name="contact_type" defaultValue={editingRow.contact_type} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
-                  {(Object.keys(TYPE_LABEL) as PartnerContactType[]).map((t) => (
+                  {/* Includes the row's current type even if it's the
+                      legacy 'worker' value, so editing an old contact
+                      does not silently reclassify it. */}
+                  {Array.from(new Set([...CREATABLE_TYPES, editingRow.contact_type])).map((t) => (
                     <option key={t} value={t}>{TYPE_LABEL[t]}</option>
                   ))}
                 </select>
