@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ── Mock Supabase query builder ─────────────────────────────────
 
@@ -40,11 +40,15 @@ vi.mock('@/lib/supabase/client', () => ({
 import {
   fetchPlatforms, fetchPlatformTaskColumns, fetchPlatformStats,
   fetchTrackerByPlatform, updateTrackerField, updateTaskStatus,
-  insertTrackerRow, deleteTrackerRow, fetchTaskHistory,
+  insertTrackerRow, deleteTrackerRow, fetchTaskHistory, updateTrackerRow,
   fetchRegistryByPlatform, insertRegistryRow, updateRegistryRow,
   fetchOrdersByPlatform, createOrder, updateOrder, deleteOrder,
   fetchPayrollByPlatform, upsertPayrollRow,
-  fetchAllUsers,
+  fetchAllUsers, provisionAccount,
+  fetchMyTeamTracker, fetchMyTeamActivity,
+  updatePartnerContact, updateReferral, deleteReferral,
+  updatePaySlip, deletePaySlip, unmarkPaySlipPaid,
+  fetchReferrerRevenueOverride, upsertReferrerRevenueOverride, resolveRevenueSplit,
 } from '@/lib/db'
 
 // ── Tests ───────────────────────────────────────────────────────
@@ -446,5 +450,304 @@ describe('fetchAllUsers', () => {
     const result = await fetchAllUsers()
     expect(result).toEqual([])
     spy.mockRestore()
+  })
+})
+
+// ── Tracker — Edit modal / My Team ──────────────────────────────
+
+describe('updateTrackerRow', () => {
+  it('returns null error on success', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await updateTrackerRow('r1', { notes: 'updated' } as any)
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('worker_tracker')
+  })
+
+  it('returns error on failure', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await updateTrackerRow('r1', {} as any)
+    expect(result).toEqual({ error: 'fail' })
+  })
+})
+
+describe('fetchMyTeamTracker', () => {
+  it('returns tracker rows scoped to the manager', async () => {
+    mockResponse = { data: [{ id: 'r1', manager_id: 'mgr1' }], error: null }
+    const result = await fetchMyTeamTracker('mgr1')
+    expect(result).toEqual([{ id: 'r1', manager_id: 'mgr1' }])
+    expect(mockSupabase.from).toHaveBeenCalledWith('worker_tracker')
+  })
+
+  it('returns empty on error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await fetchMyTeamTracker('mgr1')
+    expect(result).toEqual([])
+    spy.mockRestore()
+  })
+})
+
+describe('fetchMyTeamActivity', () => {
+  it('returns activity rows scoped to the manager team', async () => {
+    mockResponse = { data: [{ id: 'h1' }], error: null }
+    const result = await fetchMyTeamActivity('mgr1')
+    expect(result).toEqual([{ id: 'h1' }])
+    expect(mockSupabase.from).toHaveBeenCalledWith('task_status_history')
+  })
+
+  it('returns empty on error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await fetchMyTeamActivity('mgr1', 10)
+    expect(result).toEqual([])
+    spy.mockRestore()
+  })
+})
+
+// ── Referrals ────────────────────────────────────────────────────
+
+describe('updateReferral', () => {
+  it('returns null error on success', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await updateReferral('ref1', { referred_name: 'New Name' })
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('referrals')
+  })
+
+  it('returns error on failure', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await updateReferral('ref1', {})
+    expect(result).toEqual({ error: 'fail' })
+  })
+})
+
+describe('deleteReferral', () => {
+  it('returns null error on success', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await deleteReferral('ref1')
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('referrals')
+  })
+
+  it('returns error on failure', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await deleteReferral('ref1')
+    expect(result).toEqual({ error: 'fail' })
+  })
+})
+
+// ── Partner Contacts ─────────────────────────────────────────────
+
+describe('updatePartnerContact', () => {
+  it('returns null error on success', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await updatePartnerContact('c1', { name: 'New Name' })
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('partner_contacts')
+  })
+
+  it('returns error on failure', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await updatePartnerContact('c1', {})
+    expect(result).toEqual({ error: 'fail' })
+  })
+})
+
+// ── Pay Slips — edit/delete/unmark paid ─────────────────────────
+
+describe('updatePaySlip', () => {
+  it('returns null error on success without logging audit when no actor given', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await updatePaySlip('ps1', { notes: 'fixed amount' })
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('pay_slips')
+    expect(mockSupabase.from).not.toHaveBeenCalledWith('audit_log')
+  })
+
+  it('logs an audit entry when updatedBy is given', async () => {
+    mockResponse = { data: null, error: null }
+    await updatePaySlip('ps1', { notes: 'fixed amount' }, 'admin1')
+    expect(mockSupabase.from).toHaveBeenCalledWith('pay_slips')
+    expect(mockSupabase.from).toHaveBeenCalledWith('audit_log')
+  })
+
+  it('does not log audit when the update fails', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await updatePaySlip('ps1', {}, 'admin1')
+    expect(result).toEqual({ error: 'fail' })
+    expect(mockSupabase.from).not.toHaveBeenCalledWith('audit_log')
+  })
+})
+
+describe('deletePaySlip', () => {
+  it('returns null error on success', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await deletePaySlip('ps1')
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('pay_slips')
+  })
+
+  it('logs an audit entry when deletedBy is given', async () => {
+    mockResponse = { data: null, error: null }
+    await deletePaySlip('ps1', 'admin1')
+    expect(mockSupabase.from).toHaveBeenCalledWith('audit_log')
+  })
+
+  it('returns error on failure', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await deletePaySlip('ps1')
+    expect(result).toEqual({ error: 'fail' })
+  })
+})
+
+describe('unmarkPaySlipPaid', () => {
+  it('deletes the active payment row and returns null error', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await unmarkPaySlipPaid('ps1')
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('payments')
+  })
+
+  it('logs an audit entry when actorId is given', async () => {
+    mockResponse = { data: null, error: null }
+    await unmarkPaySlipPaid('ps1', 'admin1')
+    expect(mockSupabase.from).toHaveBeenCalledWith('audit_log')
+  })
+
+  it('returns error on failure', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await unmarkPaySlipPaid('ps1')
+    expect(result).toEqual({ error: 'fail' })
+  })
+})
+
+// ── Referrer revenue overrides ───────────────────────────────────
+
+describe('fetchReferrerRevenueOverride', () => {
+  it('returns the override row', async () => {
+    mockResponse = { data: { referrer_user_id: 'ref1', referral_percentage: 15 }, error: null }
+    const result = await fetchReferrerRevenueOverride('ref1')
+    expect(result).toEqual({ referrer_user_id: 'ref1', referral_percentage: 15 })
+  })
+
+  it('returns null on error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await fetchReferrerRevenueOverride('ref1')
+    expect(result).toBeNull()
+    spy.mockRestore()
+  })
+})
+
+describe('upsertReferrerRevenueOverride', () => {
+  it('returns null error on success', async () => {
+    mockResponse = { data: null, error: null }
+    const result = await upsertReferrerRevenueOverride({ referrer_user_id: 'ref1', referral_percentage: 15 })
+    expect(result).toEqual({ error: null })
+    expect(mockSupabase.from).toHaveBeenCalledWith('referrer_revenue_overrides')
+  })
+
+  it('returns error on failure', async () => {
+    mockResponse = { data: null, error: { message: 'fail' } }
+    const result = await upsertReferrerRevenueOverride({ referrer_user_id: 'ref1', referral_percentage: 15 })
+    expect(result).toEqual({ error: 'fail' })
+  })
+})
+
+describe('resolveRevenueSplit', () => {
+  // resolveRevenueSplit fires 4 parallel .from() calls (platform,
+  // worker, referral, referrer) — branch the mock per table so each
+  // can be given an independent maybeSingle() response.
+  function mockByTable(responses: Record<string, any>) {
+    mockSupabase.from = vi.fn((table: string) => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: responses[table] ?? null, error: null }),
+        }),
+      }),
+    })) as any
+  }
+
+  it('falls back to platform default when no overrides exist', async () => {
+    mockByTable({
+      platform_revenue_splits: { client_percentage: 40, company_percentage: 30, referral_percentage: 10, worker_percentage: 20 },
+    })
+    const result = await resolveRevenueSplit('w1', 1)
+    expect(result).toEqual({ client_percentage: 40, company_percentage: 30, referral_percentage: 10, worker_percentage: 20 })
+  })
+
+  it('worker override wins over platform default for client/company/worker %', async () => {
+    mockByTable({
+      platform_revenue_splits: { client_percentage: 40, company_percentage: 30, referral_percentage: 10, worker_percentage: 20 },
+      worker_revenue_overrides: { client_percentage: 35, company_percentage: 25, worker_percentage: 30 },
+    })
+    const result = await resolveRevenueSplit('w1', 1)
+    expect(result.client_percentage).toBe(35)
+    expect(result.company_percentage).toBe(25)
+    expect(result.worker_percentage).toBe(30)
+  })
+
+  it('referrer default wins over platform default for referral %', async () => {
+    mockByTable({
+      platform_revenue_splits: { client_percentage: 40, company_percentage: 30, referral_percentage: 10, worker_percentage: 20 },
+      referrer_revenue_overrides: { referral_percentage: 18 },
+    })
+    const result = await resolveRevenueSplit('w1', 1, null, 'referrer1')
+    expect(result.referral_percentage).toBe(18)
+  })
+
+  it('per-referral override wins over the referrer default', async () => {
+    mockByTable({
+      platform_revenue_splits: { client_percentage: 40, company_percentage: 30, referral_percentage: 10, worker_percentage: 20 },
+      referrer_revenue_overrides: { referral_percentage: 18 },
+      referral_revenue_overrides: { referral_percentage: 25 },
+    })
+    const result = await resolveRevenueSplit('w1', 1, 'referral1', 'referrer1')
+    expect(result.referral_percentage).toBe(25)
+  })
+
+  it('resolves to 0/derived worker % when nothing is configured at all', async () => {
+    mockByTable({})
+    const result = await resolveRevenueSplit('w1', null)
+    expect(result).toEqual({ client_percentage: 0, company_percentage: 0, referral_percentage: 0, worker_percentage: 100 })
+  })
+})
+
+// ── Account provisioning (fetch-based, not Supabase) ─────────────
+
+describe('provisionAccount', () => {
+  const originalFetch = global.fetch
+
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  it('returns the new userId on success', async () => {
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok: true, json: () => Promise.resolve({ userId: 'new-user-id' }),
+    })) as any
+    const result = await provisionAccount('new@example.com', 'New Worker')
+    expect(result).toEqual({ userId: 'new-user-id', error: null })
+    expect(global.fetch).toHaveBeenCalledWith('/api/admin/users/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'new@example.com', displayName: 'New Worker' }),
+    })
+  })
+
+  it('returns the server error message on failure', async () => {
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok: false, json: () => Promise.resolve({ error: 'An account with this email already exists' }),
+    })) as any
+    const result = await provisionAccount('dup@example.com')
+    expect(result).toEqual({ userId: null, error: 'An account with this email already exists' })
+  })
+
+  it('falls back to a generic error when the response has no body', async () => {
+    global.fetch = vi.fn(() => Promise.resolve({
+      ok: false, json: () => Promise.reject(new Error('no body')),
+    })) as any
+    const result = await provisionAccount('bad@example.com')
+    expect(result).toEqual({ userId: null, error: 'Could not create account' })
   })
 })
