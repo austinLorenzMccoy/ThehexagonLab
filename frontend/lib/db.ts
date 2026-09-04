@@ -476,6 +476,40 @@ export async function issuePaySlip(
   return { id, error: error?.message ?? null }
 }
 
+/** Edit an unpaid pay slip (period, amount, currency, notes). The UI
+ *  only offers this while no payment is recorded against the slip —
+ *  editing after settlement would desync the figure from the payment
+ *  actually sent, so callers should gate on that themselves. */
+export async function updatePaySlip(
+  id: string,
+  updates: Partial<Pick<PaySlipRow, 'period_month' | 'period_year' | 'expected_amount_usd' | 'currency' | 'notes'>>,
+  updatedBy?: string
+): Promise<{ error: string | null }> {
+  const supabase = createClient() as any
+  const { error } = await supabase.from('pay_slips').update(updates).eq('id', id)
+  if (!error && updatedBy) {
+    await logAudit({
+      userId: updatedBy, action: 'pay_slip_updated', entityType: 'pay_slips',
+      entityId: id, details: updates,
+    })
+  }
+  return { error: error?.message ?? null }
+}
+
+/** Delete an unpaid pay slip. `payments.pay_slip_id` is `on delete set
+ *  null`, so this never destroys a payment record — but deleting a
+ *  slip that already has a payment against it would desync the
+ *  worker's "already paid" period tracking, so the UI only offers
+ *  this while unpaid too. */
+export async function deletePaySlip(id: string, deletedBy?: string): Promise<{ error: string | null }> {
+  const supabase = createClient()
+  const { error } = await supabase.from('pay_slips').delete().eq('id', id)
+  if (!error && deletedBy) {
+    await logAudit({ userId: deletedBy, action: 'pay_slip_deleted', entityType: 'pay_slips', entityId: id })
+  }
+  return { error: error?.message ?? null }
+}
+
 /** Admin oversight — every pay slip issued, across all workers. */
 export async function fetchAllPaySlips(): Promise<PaySlipRow[]> {
   const supabase = createClient()

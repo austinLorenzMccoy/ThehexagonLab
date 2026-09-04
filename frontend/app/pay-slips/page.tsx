@@ -9,6 +9,8 @@ import {
   fetchAllPaySlips,
   fetchAllPayments,
   issuePaySlip,
+  updatePaySlip,
+  deletePaySlip,
   uploadPaySlipFile,
   getPaySlipFileUrl,
   recordPaySlipPayment,
@@ -16,7 +18,7 @@ import {
   resolveRevenueSplit,
 } from '@/lib/db'
 import type { WorkerEarningsSummaryRow, PaySlipRow, PaymentRow, PaySlipMonth, Platform, ResolvedRevenueSplit } from '@/types'
-import { Loader2, Receipt, Upload, FileText, Wallet, Check, Percent } from 'lucide-react'
+import { Loader2, Receipt, Upload, FileText, Wallet, Check, Percent, Pencil, Trash2, X } from 'lucide-react'
 
 const MONTHS: PaySlipMonth[] = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -39,6 +41,7 @@ export default function PaySlipsPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [payingId, setPayingId] = useState<string | null>(null)
+  const [editingRow, setEditingRow] = useState<PaySlipRow | null>(null)
 
   // Revenue split calculator (admin-only — see resolveRevenueSplit).
   // Mirrors the worker/platform selects in the form below so the
@@ -127,6 +130,31 @@ export default function PaySlipsPage() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
+  const handleSaveEdit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!editingRow) return
+    const fd = new FormData(e.currentTarget)
+    const { error } = await updatePaySlip(editingRow.id, {
+      period_month: fd.get('period_month') as PaySlipMonth,
+      period_year: Number(fd.get('period_year')),
+      expected_amount_usd: Number(fd.get('expected_amount_usd')),
+      currency: (fd.get('currency') as string) || 'USD',
+      notes: (fd.get('notes') as string) || null,
+    }, appUser?.id)
+    if (error) { toast(`Could not update pay slip: ${error}`, 'error'); return }
+    toast('Pay slip updated', 'success')
+    setEditingRow(null)
+    load()
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this pay slip?')) return
+    const { error } = await deletePaySlip(id, appUser?.id)
+    if (error) { toast(`Could not delete: ${error}`, 'error'); return }
+    toast('Pay slip deleted', 'success')
+    load()
+  }
+
   /** Month-end settlement (PRD §4.3 step 2) — tries a real Paystack
    *  transfer first; if Paystack isn't configured or the worker has no
    *  recipient code on file, degrades to recording the payment manually
@@ -181,6 +209,7 @@ export default function PaySlipsPage() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Pay Slips</h1>
@@ -298,6 +327,7 @@ export default function PaySlipsPage() {
                   <th className="py-2 pr-3">Issued</th>
                   <th className="py-2 pr-3">File</th>
                   <th className="py-2 pr-3">Payment</th>
+                  <th className="py-2 pr-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
@@ -338,6 +368,18 @@ export default function PaySlipsPage() {
                           </button>
                         )}
                       </td>
+                      <td className="py-2 pr-3">
+                        {!paid && !inFlight && (
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setEditingRow(s)} className="p-1 rounded hover:bg-ops/10 transition-colors" title="Edit pay slip">
+                              <Pencil className="h-3.5 w-3.5 text-ops" />
+                            </button>
+                            <button onClick={() => handleDelete(s.id)} className="p-1 rounded hover:bg-red-500/10 transition-colors" title="Delete pay slip">
+                              <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
@@ -347,5 +389,57 @@ export default function PaySlipsPage() {
         )}
       </div>
     </div>
+
+    {/* Edit Modal */}
+    {editingRow && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="w-full max-w-lg mx-4 rounded-xl border border-border-subtle bg-card shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Edit Pay Slip</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{workerLabel(editingRow.worker_user_id)}</p>
+            </div>
+            <button onClick={() => setEditingRow(null)} className="rounded p-1 hover:bg-muted">
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
+          <form onSubmit={handleSaveEdit} className="px-6 py-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Period Month</label>
+                <select name="period_month" defaultValue={editingRow.period_month} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50">
+                  {MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Period Year</label>
+                <input name="period_year" type="number" required defaultValue={editingRow.period_year} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Expected Amount</label>
+                <input name="expected_amount_usd" type="number" step="0.01" min="0" required defaultValue={editingRow.expected_amount_usd} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Currency</label>
+                <input name="currency" defaultValue={editingRow.currency} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Notes</label>
+              <textarea name="notes" rows={2} defaultValue={editingRow.notes ?? ''} className="w-full rounded-lg border border-border-subtle bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ops/50" />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setEditingRow(null)} className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
+                Cancel
+              </button>
+              <button type="submit" className="rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all">
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    </>
   )
 }
