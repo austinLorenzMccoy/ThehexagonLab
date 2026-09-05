@@ -77,6 +77,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canPreviewDemo = realAppUser?.role === 'admin'
   const appUser = isPreviewingDemo && canPreviewDemo ? DEMO_APP_USER : realAppUser
 
+  // Set synchronously during render, not from a useEffect: effects run
+  // children-before-parents within a commit, so a page that mounts in the
+  // same commit where canPreviewDemo first becomes true (its own data-fetch
+  // effect firing as a child) would read the module flag before this
+  // provider's effect had a chance to flip it, and silently fetch real data.
+  // Render always finishes — for every component, this component included —
+  // before any effects run, so setting it here can never lose that race.
+  setDemoPreviewActive(isPreviewingDemo && canPreviewDemo)
+
   // Deferred to an effect (not the useState initializer) so server and
   // client agree on the first render — reading sessionStorage during the
   // initializer would make the client's first render diverge from the
@@ -95,10 +104,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // badge instantly but leave already-fetched real numbers on screen.
     window.location.reload()
   }, [canPreviewDemo, isPreviewingDemo])
-
-  useEffect(() => {
-    setDemoPreviewActive(isPreviewingDemo && canPreviewDemo)
-  }, [isPreviewingDemo, canPreviewDemo])
 
   // ── Real Supabase auth — always runs; demo never bypasses sign-in ──
   const supabase = createClient()
