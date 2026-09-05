@@ -4,6 +4,31 @@
  * All Supabase queries are centralised here. UI components never call Supabase directly.
  */
 import { createClient } from '@/lib/supabase/client'
+import { isDemoMode } from '@/lib/demo'
+import {
+  DEMO_ACTIVITY,
+  DEMO_DISPUTES,
+  DEMO_ONBOARDING,
+  DEMO_ORDERS,
+  DEMO_PARTNER_CONTACTS,
+  DEMO_PAYMENTS,
+  DEMO_PAYOUT_REQUESTS,
+  DEMO_PAY_SLIPS,
+  DEMO_PAYROLL,
+  DEMO_PLATFORMS,
+  DEMO_PLATFORM_STATS,
+  DEMO_REFERRALS,
+  DEMO_REFERRAL_SUMMARY,
+  DEMO_REGISTRY,
+  DEMO_TASK_COLUMNS,
+  DEMO_TIMESHEETS,
+  DEMO_TRACKER,
+  DEMO_USERS,
+  DEMO_WARNING_EVENTS,
+  DEMO_WORKER_EARNINGS_SUMMARY,
+  DEMO_WORKER_FEEDBACK,
+  platformsBySlug,
+} from '@/lib/demo-data'
 import type {
   AppUser, WorkerTrackerRow, WorkerRegistryRow,
   OrderRow, PayrollRow, Platform, PlatformTaskColumn,
@@ -15,14 +40,25 @@ import type {
   WorkerTimesheetEarningsRow,
 } from '@/types'
 
+// While a real admin is previewing as the fake Demo Admin, every read
+// always returns sample data — never a mix of real and fake — so a
+// screenshot or client demo can never leak real org data. Outside of
+// preview, isDemoMode() is false and this is a no-op pass-through.
+function liveOrDemo<T>(live: T[], demo: T[]): T[] {
+  return isDemoMode() ? demo : live
+}
+
 // ── Platforms ───────────────────────────────────────────────────
 
 export async function fetchPlatforms(): Promise<Platform[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('platforms').select('*').eq('is_active', true).order('id')
-  if (error) { console.error('fetchPlatforms:', error.message); return [] }
-  return (data ?? []) as Platform[]
+  if (error) {
+    console.error('fetchPlatforms:', error.message)
+    return isDemoMode() ? DEMO_PLATFORMS : []
+  }
+  return liveOrDemo((data ?? []) as Platform[], DEMO_PLATFORMS)
 }
 
 export async function fetchPlatformTaskColumns(platformSlug: string): Promise<PlatformTaskColumn[]> {
@@ -33,15 +69,30 @@ export async function fetchPlatformTaskColumns(platformSlug: string): Promise<Pl
     .eq('platforms.slug', platformSlug)
     .eq('is_active', true)
     .order('sort_order')
-  if (error) { console.error('fetchPlatformTaskColumns:', error.message); return [] }
-  return (data ?? []) as PlatformTaskColumn[]
+  if (error) {
+    console.error('fetchPlatformTaskColumns:', error.message)
+    const platform = platformsBySlug(platformSlug)
+    return isDemoMode()
+      ? DEMO_TASK_COLUMNS.filter((c) => c.platform_id === platform?.id)
+      : []
+  }
+  const rows = (data ?? []) as PlatformTaskColumn[]
+  const platform = platformsBySlug(platformSlug)
+  return liveOrDemo(
+    rows,
+    DEMO_TASK_COLUMNS.filter((c) => c.platform_id === platform?.id),
+  )
 }
 
 export async function fetchPlatformStats(): Promise<PlatformStatsRow[]> {
+  if (isDemoMode()) return DEMO_PLATFORM_STATS
   const supabase = createClient()
   const { data, error } = await (supabase as any)
     .from('platform_stats').select('*').order('total_workers', { ascending: false })
-  if (error) { console.error('fetchPlatformStats:', error.message); return [] }
+  if (error) {
+    console.error('fetchPlatformStats:', error.message)
+    return []
+  }
   return (data ?? []) as PlatformStatsRow[]
 }
 
@@ -67,8 +118,10 @@ export async function fetchTrackerByPlatform(
   }
 
   const { data, error } = await query
-  if (error) { console.error('fetchTrackerByPlatform:', error.message); return [] }
-  return (data ?? []) as WorkerTrackerRow[]
+  const platform = platformsBySlug(platformSlug)
+  const demo = DEMO_TRACKER.filter((r) => r.platform_id === platform?.id)
+  if (error) { console.error('fetchTrackerByPlatform:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as WorkerTrackerRow[], demo)
 }
 
 export async function updateTrackerField(
@@ -130,8 +183,14 @@ export async function fetchTaskHistory(rowId: string): Promise<TaskStatusHistory
     .from('task_status_history')
     .select('*').eq('tracker_row_id', rowId)
     .order('changed_at', { ascending: false }).limit(50)
-  if (error) { console.error('fetchTaskHistory:', error.message); return [] }
-  return (data ?? []) as any as TaskStatusHistoryRow[]
+  if (error) {
+    console.error('fetchTaskHistory:', error.message)
+    return isDemoMode() ? DEMO_ACTIVITY.filter((r) => r.tracker_row_id === rowId) : []
+  }
+  return liveOrDemo(
+    (data ?? []) as any as TaskStatusHistoryRow[],
+    DEMO_ACTIVITY.filter((r) => r.tracker_row_id === rowId),
+  )
 }
 
 // ── Manager team view ───────────────────────────────────────────
@@ -148,8 +207,10 @@ export async function fetchMyTeamTracker(managerId: string): Promise<WorkerTrack
     .select('*, platforms(slug, label, icon, color_hex)')
     .eq('manager_id', managerId)
     .order('worker_name')
-  if (error) { console.error('fetchMyTeamTracker:', error.message); return [] }
-  return (data ?? []) as WorkerTrackerRow[]
+
+  const demo = DEMO_TRACKER.filter((r) => r.manager_id === managerId)
+  if (error) { console.error('fetchMyTeamTracker:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as WorkerTrackerRow[], demo)
 }
 
 export async function fetchMyTeamActivity(
@@ -162,8 +223,13 @@ export async function fetchMyTeamActivity(
     .eq('worker_tracker.manager_id', managerId)
     .order('changed_at', { ascending: false })
     .limit(limit)
-  if (error) { console.error('fetchMyTeamActivity:', error.message); return [] }
-  return (data ?? []) as any as TaskStatusHistoryRow[]
+
+  const demoTeamIds = new Set(
+    DEMO_TRACKER.filter((r) => r.manager_id === managerId).map((r) => r.id)
+  )
+  const demo = DEMO_ACTIVITY.filter((r) => demoTeamIds.has(r.tracker_row_id)).slice(0, limit)
+  if (error) { console.error('fetchMyTeamActivity:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as any as TaskStatusHistoryRow[], demo)
 }
 
 // ── Workers registry ────────────────────────────────────────────
@@ -175,8 +241,16 @@ export async function fetchRegistryByPlatform(platformSlug: string): Promise<Wor
     .select('*, platforms!inner(slug)')
     .eq('platforms.slug', platformSlug)
     .order('date_started', { ascending: false })
-  if (error) { console.error('fetchRegistryByPlatform:', error.message); return [] }
-  return (data ?? []) as WorkerRegistryRow[]
+  if (error) {
+    console.error('fetchRegistryByPlatform:', error.message)
+    const platform = platformsBySlug(platformSlug)
+    return isDemoMode() ? DEMO_REGISTRY.filter((r) => r.platform_id === platform?.id) : []
+  }
+  const platform = platformsBySlug(platformSlug)
+  return liveOrDemo(
+    (data ?? []) as WorkerRegistryRow[],
+    DEMO_REGISTRY.filter((r) => r.platform_id === platform?.id),
+  )
 }
 
 export async function insertRegistryRow(
@@ -216,8 +290,17 @@ export async function fetchOrdersByPlatform(
     .order('order_date', { ascending: false })
   if (statusFilter) query = query.eq('status', statusFilter)
   const { data, error } = await query
-  if (error) { console.error('fetchOrdersByPlatform:', error.message); return [] }
-  return (data ?? []) as OrderRow[]
+  if (error) {
+    console.error('fetchOrdersByPlatform:', error.message)
+    const platform = platformsBySlug(platformSlug)
+    const demo = DEMO_ORDERS.filter((r) => r.platform_id === platform?.id)
+      .filter((r) => !statusFilter || r.status === statusFilter)
+    return isDemoMode() ? demo : []
+  }
+  const platform = platformsBySlug(platformSlug)
+  const demo = DEMO_ORDERS.filter((r) => r.platform_id === platform?.id)
+    .filter((r) => !statusFilter || r.status === statusFilter)
+  return liveOrDemo((data ?? []) as OrderRow[], demo)
 }
 
 export async function createOrder(
@@ -258,8 +341,19 @@ export async function fetchPayrollByPlatform(
   if (year)  query = query.eq('year', year)
   if (month) query = query.eq('month', month)
   const { data, error } = await query
-  if (error) { console.error('fetchPayrollByPlatform:', error.message); return [] }
-  return (data ?? []) as PayrollRow[]
+  if (error) {
+    console.error('fetchPayrollByPlatform:', error.message)
+    const platform = platformsBySlug(platformSlug)
+    const demo = DEMO_PAYROLL.filter((r) => r.platform_id === platform?.id)
+      .filter((r) => !year || r.year === year)
+      .filter((r) => !month || r.month === month)
+    return isDemoMode() ? demo : []
+  }
+  const platform = platformsBySlug(platformSlug)
+  const demo = DEMO_PAYROLL.filter((r) => r.platform_id === platform?.id)
+    .filter((r) => !year || r.year === year)
+    .filter((r) => !month || r.month === month)
+  return liveOrDemo((data ?? []) as PayrollRow[], demo)
 }
 
 export async function upsertPayrollRow(
@@ -291,8 +385,8 @@ export async function deletePayrollRow(rowId: string): Promise<{ error: string |
 export async function fetchAllUsers(): Promise<AppUser[]> {
   const supabase = createClient()
   const { data, error } = await supabase.from('app_users').select('*').order('created_at')
-  if (error) { console.error('fetchAllUsers:', error.message); return [] }
-  return (data ?? []) as AppUser[]
+  if (error) { console.error('fetchAllUsers:', error.message); return isDemoMode() ? DEMO_USERS : [] }
+  return liveOrDemo((data ?? []) as AppUser[], DEMO_USERS)
 }
 
 /**
@@ -328,8 +422,17 @@ export async function fetchOnboardingByPlatform(
     .order('date_applied', { ascending: false })
   if (statusFilter) query = query.eq('application_status', statusFilter)
   const { data, error } = await query
-  if (error) { console.error('fetchOnboardingByPlatform:', error.message); return [] }
-  return (data ?? []) as OnboardingRow[]
+  if (error) {
+    console.error('fetchOnboardingByPlatform:', error.message)
+    const platform = platformsBySlug(platformSlug)
+    const demo = DEMO_ONBOARDING.filter((r) => r.platform_id === platform?.id)
+      .filter((r) => !statusFilter || r.application_status === statusFilter)
+    return isDemoMode() ? demo : []
+  }
+  const platform = platformsBySlug(platformSlug)
+  const demo = DEMO_ONBOARDING.filter((r) => r.platform_id === platform?.id)
+    .filter((r) => !statusFilter || r.application_status === statusFilter)
+  return liveOrDemo((data ?? []) as OnboardingRow[], demo)
 }
 
 export async function insertOnboardingRow(
@@ -391,10 +494,17 @@ async function logAudit(params: {
 export async function fetchWorkerEarningsSummary(
   workerUserId: string
 ): Promise<WorkerEarningsSummaryRow | null> {
+  if (isDemoMode()) {
+    return workerUserId === DEMO_WORKER_EARNINGS_SUMMARY.worker_user_id
+      ? DEMO_WORKER_EARNINGS_SUMMARY : null
+  }
   const supabase = createClient()
   const { data, error } = await (supabase as any)
     .from('worker_earnings_summary').select('*').eq('worker_user_id', workerUserId).maybeSingle()
-  if (error) { console.error('fetchWorkerEarningsSummary:', error.message); return null }
+  if (error) {
+    console.error('fetchWorkerEarningsSummary:', error.message)
+    return null
+  }
   return (data as WorkerEarningsSummaryRow) ?? null
 }
 
@@ -403,8 +513,11 @@ export async function fetchAllWorkerEarningsSummaries(): Promise<WorkerEarningsS
   const supabase = createClient()
   const { data, error } = await (supabase as any)
     .from('worker_earnings_summary').select('*').order('active_warnings', { ascending: false })
-  if (error) { console.error('fetchAllWorkerEarningsSummaries:', error.message); return [] }
-  return (data ?? []) as WorkerEarningsSummaryRow[]
+  if (error) {
+    console.error('fetchAllWorkerEarningsSummaries:', error.message)
+    return isDemoMode() ? [DEMO_WORKER_EARNINGS_SUMMARY] : []
+  }
+  return liveOrDemo((data ?? []) as WorkerEarningsSummaryRow[], [DEMO_WORKER_EARNINGS_SUMMARY])
 }
 
 // -- Timesheets -------------------------------------------------------
@@ -414,8 +527,9 @@ export async function fetchTimesheets(workerUserId: string): Promise<WorkerTimes
   const { data, error } = await supabase
     .from('worker_timesheets').select('*').eq('worker_user_id', workerUserId)
     .order('work_date', { ascending: false })
-  if (error) { console.error('fetchTimesheets:', error.message); return [] }
-  return (data ?? []) as WorkerTimesheetRow[]
+  const demo = DEMO_TIMESHEETS.filter((t) => t.worker_user_id === workerUserId)
+  if (error) { console.error('fetchTimesheets:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as WorkerTimesheetRow[], demo)
 }
 
 export async function logTimesheetHours(
@@ -481,8 +595,9 @@ export async function fetchPaySlips(workerUserId: string): Promise<PaySlipRow[]>
   const { data, error } = await supabase
     .from('pay_slips').select('*').eq('worker_user_id', workerUserId)
     .order('period_year', { ascending: false })
-  if (error) { console.error('fetchPaySlips:', error.message); return [] }
-  return (data ?? []) as PaySlipRow[]
+  const demo = DEMO_PAY_SLIPS.filter((p) => p.worker_user_id === workerUserId)
+  if (error) { console.error('fetchPaySlips:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as PaySlipRow[], demo)
 }
 
 export async function issuePaySlip(
@@ -549,8 +664,8 @@ export async function fetchAllPaySlips(): Promise<PaySlipRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('pay_slips').select('*').order('created_at', { ascending: false })
-  if (error) { console.error('fetchAllPaySlips:', error.message); return [] }
-  return (data ?? []) as PaySlipRow[]
+  if (error) { console.error('fetchAllPaySlips:', error.message); return isDemoMode() ? DEMO_PAY_SLIPS : [] }
+  return liveOrDemo((data ?? []) as PaySlipRow[], DEMO_PAY_SLIPS)
 }
 
 /**
@@ -582,8 +697,9 @@ export async function fetchPayments(workerUserId: string): Promise<PaymentRow[]>
   const { data, error } = await supabase
     .from('payments').select('*').eq('worker_user_id', workerUserId)
     .order('created_at', { ascending: false })
-  if (error) { console.error('fetchPayments:', error.message); return [] }
-  return (data ?? []) as PaymentRow[]
+  const demo = DEMO_PAYMENTS.filter((p) => p.worker_user_id === workerUserId)
+  if (error) { console.error('fetchPayments:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as PaymentRow[], demo)
 }
 
 /** Admin oversight — every payment across all workers (used to show
@@ -592,8 +708,8 @@ export async function fetchAllPayments(): Promise<PaymentRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('payments').select('*').order('created_at', { ascending: false })
-  if (error) { console.error('fetchAllPayments:', error.message); return [] }
-  return (data ?? []) as PaymentRow[]
+  if (error) { console.error('fetchAllPayments:', error.message); return isDemoMode() ? DEMO_PAYMENTS : [] }
+  return liveOrDemo((data ?? []) as PaymentRow[], DEMO_PAYMENTS)
 }
 
 /**
@@ -661,8 +777,9 @@ export async function fetchWarnings(workerUserId: string): Promise<WarningEventR
   const { data, error } = await supabase
     .from('warning_events').select('*').eq('worker_user_id', workerUserId)
     .order('created_at', { ascending: false })
-  if (error) { console.error('fetchWarnings:', error.message); return [] }
-  return (data ?? []) as WarningEventRow[]
+  const demo = DEMO_WARNING_EVENTS.filter((w) => w.worker_user_id === workerUserId)
+  if (error) { console.error('fetchWarnings:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as WarningEventRow[], demo)
 }
 
 export async function issueWarning(
@@ -702,8 +819,9 @@ export async function fetchMyFeedback(workerUserId: string): Promise<WorkerFeedb
   const { data, error } = await supabase
     .from('worker_feedback').select('*').eq('worker_user_id', workerUserId)
     .order('created_at', { ascending: false })
-  if (error) { console.error('fetchMyFeedback:', error.message); return [] }
-  return (data ?? []) as WorkerFeedbackRow[]
+  const demo = DEMO_WORKER_FEEDBACK.filter((f) => f.worker_user_id === workerUserId)
+  if (error) { console.error('fetchMyFeedback:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as WorkerFeedbackRow[], demo)
 }
 
 /** Admin inbox — every worker's feedback. Managers must never call this. */
@@ -711,8 +829,8 @@ export async function fetchAllFeedback(): Promise<WorkerFeedbackRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('worker_feedback').select('*').order('created_at', { ascending: false })
-  if (error) { console.error('fetchAllFeedback:', error.message); return [] }
-  return (data ?? []) as WorkerFeedbackRow[]
+  if (error) { console.error('fetchAllFeedback:', error.message); return isDemoMode() ? DEMO_WORKER_FEEDBACK : [] }
+  return liveOrDemo((data ?? []) as WorkerFeedbackRow[], DEMO_WORKER_FEEDBACK)
 }
 
 export async function submitFeedback(
@@ -730,8 +848,9 @@ export async function fetchMyDisputes(workerUserId: string): Promise<DisputeRow[
   const { data, error } = await supabase
     .from('disputes').select('*').eq('worker_user_id', workerUserId)
     .order('created_at', { ascending: false })
-  if (error) { console.error('fetchMyDisputes:', error.message); return [] }
-  return (data ?? []) as DisputeRow[]
+  const demo = DEMO_DISPUTES.filter((d) => d.worker_user_id === workerUserId)
+  if (error) { console.error('fetchMyDisputes:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as DisputeRow[], demo)
 }
 
 /** Admin dispute queue — every open/in-review dispute. */
@@ -739,8 +858,8 @@ export async function fetchAllDisputes(): Promise<DisputeRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('disputes').select('*').order('created_at', { ascending: false })
-  if (error) { console.error('fetchAllDisputes:', error.message); return [] }
-  return (data ?? []) as DisputeRow[]
+  if (error) { console.error('fetchAllDisputes:', error.message); return isDemoMode() ? DEMO_DISPUTES : [] }
+  return liveOrDemo((data ?? []) as DisputeRow[], DEMO_DISPUTES)
 }
 
 export async function raiseDispute(
@@ -780,10 +899,17 @@ export async function resolveDispute(
 // -- Referrals & payout gating -----------------------------------------
 
 export async function fetchReferralSummary(referrerUserId: string): Promise<ReferralSummaryRow | null> {
+  if (isDemoMode()) {
+    return referrerUserId === DEMO_REFERRAL_SUMMARY.referrer_user_id
+      ? DEMO_REFERRAL_SUMMARY : null
+  }
   const supabase = createClient()
   const { data, error } = await (supabase as any)
     .from('referral_summary').select('*').eq('referrer_user_id', referrerUserId).maybeSingle()
-  if (error) { console.error('fetchReferralSummary:', error.message); return null }
+  if (error) {
+    console.error('fetchReferralSummary:', error.message)
+    return null
+  }
   return (data as ReferralSummaryRow) ?? null
 }
 
@@ -792,8 +918,9 @@ export async function fetchReferrals(referrerUserId: string): Promise<ReferralRo
   const { data, error } = await supabase
     .from('referrals').select('*').eq('referrer_user_id', referrerUserId)
     .order('created_at', { ascending: false })
-  if (error) { console.error('fetchReferrals:', error.message); return [] }
-  return (data ?? []) as ReferralRow[]
+  const demo = DEMO_REFERRALS.filter((r) => r.referrer_user_id === referrerUserId)
+  if (error) { console.error('fetchReferrals:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as ReferralRow[], demo)
 }
 
 /** Admin oversight — every referral across every referrer. */
@@ -801,8 +928,8 @@ export async function fetchAllReferrals(): Promise<ReferralRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('referrals').select('*').order('created_at', { ascending: false })
-  if (error) { console.error('fetchAllReferrals:', error.message); return [] }
-  return (data ?? []) as ReferralRow[]
+  if (error) { console.error('fetchAllReferrals:', error.message); return isDemoMode() ? DEMO_REFERRALS : [] }
+  return liveOrDemo((data ?? []) as ReferralRow[], DEMO_REFERRALS)
 }
 
 export async function addReferral(
@@ -843,8 +970,9 @@ export async function fetchMyPayoutRequests(requesterUserId: string): Promise<Pa
   const { data, error } = await supabase
     .from('payout_requests').select('*').eq('requester_user_id', requesterUserId)
     .order('requested_at', { ascending: false })
-  if (error) { console.error('fetchMyPayoutRequests:', error.message); return [] }
-  return (data ?? []) as PayoutRequestRow[]
+  const demo = DEMO_PAYOUT_REQUESTS.filter((p) => p.requester_user_id === requesterUserId)
+  if (error) { console.error('fetchMyPayoutRequests:', error.message); return isDemoMode() ? demo : [] }
+  return liveOrDemo((data ?? []) as PayoutRequestRow[], demo)
 }
 
 /** Admin queue — every pending/approved payout request. */
@@ -852,8 +980,8 @@ export async function fetchAllPayoutRequests(): Promise<PayoutRequestRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('payout_requests').select('*').order('requested_at', { ascending: false })
-  if (error) { console.error('fetchAllPayoutRequests:', error.message); return [] }
-  return (data ?? []) as PayoutRequestRow[]
+  if (error) { console.error('fetchAllPayoutRequests:', error.message); return isDemoMode() ? DEMO_PAYOUT_REQUESTS : [] }
+  return liveOrDemo((data ?? []) as PayoutRequestRow[], DEMO_PAYOUT_REQUESTS)
 }
 
 /**
@@ -895,8 +1023,8 @@ export async function fetchPartnerContacts(): Promise<PartnerContactRow[]> {
   const supabase = createClient()
   const { data, error } = await supabase
     .from('partner_contacts').select('*').order('created_at', { ascending: false })
-  if (error) { console.error('fetchPartnerContacts:', error.message); return [] }
-  return (data ?? []) as PartnerContactRow[]
+  if (error) { console.error('fetchPartnerContacts:', error.message); return isDemoMode() ? DEMO_PARTNER_CONTACTS : [] }
+  return liveOrDemo((data ?? []) as PartnerContactRow[], DEMO_PARTNER_CONTACTS)
 }
 
 export async function insertPartnerContact(

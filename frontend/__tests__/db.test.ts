@@ -35,6 +35,12 @@ vi.mock('@/lib/supabase/client', () => ({
   createClient: () => mockSupabase,
 }))
 
+let demoModeActive = false
+
+vi.mock('@/lib/demo', () => ({
+  isDemoMode: () => demoModeActive,
+}))
+
 // ── Import under test ───────────────────────────────────────────
 
 import {
@@ -56,8 +62,40 @@ import {
 beforeEach(() => {
   vi.clearAllMocks()
   mockResponse = { data: null, error: null }
+  demoModeActive = false
   // Restore from() after any mockImplementation overrides
   mockSupabase.from = vi.fn(() => chain)
+})
+
+// ── Demo preview ──────────────────────────────────────────────────
+// See lib/demo.ts / lib/auth-context.tsx: an admin who toggles Preview
+// Demo must never see real org data mixed in with the fake identity.
+
+describe('demo preview fallbacks', () => {
+  it('prefers sample data over real data while a real admin is previewing', async () => {
+    demoModeActive = true
+    mockResponse = { data: [{ id: 99, slug: 'real-live-platform' }], error: null }
+    const result = await fetchPlatforms()
+    expect(result.every((p: any) => p.slug !== 'real-live-platform')).toBe(true)
+    expect(result.length).toBeGreaterThan(0)
+  })
+
+  it('prefers sample data over a real (non-empty) platform_stats result while previewing', async () => {
+    demoModeActive = true
+    mockResponse = {
+      data: [{ platform_id: 99, platform_slug: 'real', total_workers: 500, total_orders: 500 }],
+      error: null,
+    }
+    const result = await fetchPlatformStats()
+    expect(result.some((r: any) => r.total_workers === 500)).toBe(false)
+  })
+
+  it('returns real data when not previewing, even though sample data exists', async () => {
+    demoModeActive = false
+    mockResponse = { data: [{ id: 1, slug: 'oneforma' }], error: null }
+    const result = await fetchPlatforms()
+    expect(result).toEqual([{ id: 1, slug: 'oneforma' }])
+  })
 })
 
 // ── Platforms ───────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import React, {
 } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { setDemoPreviewActive } from '@/lib/demo'
 import type { AppUser, UserPermissions, UserRole } from '@/types'
 import { getPermissions } from '@/types'
 
@@ -71,6 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const toggleDemoPreview = useCallback(() => {
     setIsPreviewingDemo((prev) => (canPreviewDemo ? !prev : false))
   }, [canPreviewDemo])
+
+  useEffect(() => {
+    setDemoPreviewActive(isPreviewingDemo && canPreviewDemo)
+  }, [isPreviewingDemo, canPreviewDemo])
 
   // ── Real Supabase auth — always runs; demo never bypasses sign-in ──
   const supabase = createClient()
