@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { useTheme } from '@/lib/theme-context'
 import { GlobalSearch } from './global-search'
 import { LogOut, Settings, X, Sun, Moon, Monitor, Bell, HelpCircle } from 'lucide-react'
-
-const HANDBOOK_URL = 'https://claude.ai/code/artifact/8715a68e-86f9-413c-9da2-42148762c864'
 import { createClient } from '@/lib/supabase/client'
 import { setMyPayoutCurrency } from '@/lib/db'
 
@@ -99,15 +98,13 @@ export function CommandStrip() {
         <div className="flex items-center gap-2">
           <GlobalSearch />
 
-          <a
-            href={HANDBOOK_URL}
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/handbook"
             className="rounded p-1.5 hover:bg-muted transition-colors"
             title="Handbook — how to use Hexagon LABS"
           >
             <HelpCircle className="h-4 w-4 text-muted-foreground" />
-          </a>
+          </Link>
 
           <button
             onClick={cycleTheme}
