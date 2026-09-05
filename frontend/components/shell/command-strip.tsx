@@ -6,13 +6,13 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { useTheme } from '@/lib/theme-context'
 import { GlobalSearch } from './global-search'
-import { LogOut, Settings, X, Sun, Moon, Monitor, Bell, HelpCircle } from 'lucide-react'
+import { LogOut, Settings, X, Sun, Moon, Monitor, Bell, HelpCircle, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { setMyPayoutCurrency } from '@/lib/db'
 
 export function CommandStrip() {
   const router = useRouter()
-  const { appUser, signOut } = useAuth()
+  const { appUser, signOut, canPreviewDemo, isPreviewingDemo, toggleDemoPreview } = useAuth()
   const { theme, setTheme } = useTheme()
   const [showSettings, setShowSettings] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -93,10 +93,27 @@ export function CommandStrip() {
           <span className="text-xs font-medium text-muted-foreground">
             {displayName} • {appUser.role.toUpperCase()}
           </span>
+          {isPreviewingDemo && (
+            <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-400">
+              Demo preview
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
           <GlobalSearch />
+
+          {canPreviewDemo && (
+            <button
+              onClick={toggleDemoPreview}
+              className={`rounded p-1.5 transition-colors ${
+                isPreviewingDemo ? 'bg-violet-500/15 text-violet-400' : 'hover:bg-muted text-muted-foreground'
+              }`}
+              title={isPreviewingDemo ? 'Exit demo preview' : 'Preview as Demo Admin'}
+            >
+              <Sparkles className="h-4 w-4" />
+            </button>
+          )}
 
           <Link
             href="/handbook"
