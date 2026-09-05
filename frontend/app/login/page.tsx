@@ -10,11 +10,11 @@ import { ArrowLeft } from 'lucide-react'
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { appUser, isLoading, isDemo, signInWithGoogle } = useAuth()
+  const { appUser, isLoading, signInWithGoogle } = useAuth()
   const [error, setError] = useState('')
   const [signingIn, setSigningIn] = useState(false)
 
-  // If already authenticated (or demo mode), redirect to dashboard
+  // If already authenticated, redirect to dashboard
   useEffect(() => {
     if (!isLoading && appUser) {
       const next = searchParams.get('next') ?? '/dashboard'
@@ -48,18 +48,6 @@ function LoginContent() {
     )
   }
 
-  // Demo mode: show a banner while redirecting
-  if (isDemo && appUser) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="text-center space-y-4">
-          <div className="h-8 w-8 mx-auto animate-spin rounded-full border-2 border-slate-600 border-t-violet-500" />
-          <p className="text-slate-400 text-sm">Entering demo mode…</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
       <div className="w-full max-w-md">
@@ -80,14 +68,6 @@ function LoginContent() {
               Intelligence Control Room
             </p>
           </div>
-
-          {isDemo && (
-            <div className="mb-4 rounded-lg border border-violet-500/20 bg-violet-500/10 p-3">
-              <p className="text-sm text-violet-300">
-                🎯 <strong>Demo Mode</strong> — Showing UI preview with sample data.
-              </p>
-            </div>
-          )}
 
           {error && (
             <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
