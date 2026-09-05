@@ -92,8 +92,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* ── Main Content ────────────────────────────── */}
-        <main className="flex-1 overflow-auto bg-background">
-          <div className="p-6">{children}</div>
+        <main className="relative flex-1 overflow-auto bg-background">
+          {/* Watermark — decorative brand mark, subtle in both themes */}
+          <img
+            src="/logo-mark.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none fixed bottom-[-6rem] right-[-6rem] z-0 h-[26rem] w-[26rem] select-none opacity-[0.035] grayscale dark:opacity-[0.05]"
+          />
+          <div className="relative z-10 p-6">{children}</div>
         </main>
       </div>
     </div>
