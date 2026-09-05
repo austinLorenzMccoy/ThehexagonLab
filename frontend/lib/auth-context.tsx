@@ -35,6 +35,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// sessionStorage (not a cookie — never read pre-auth, never bypasses sign-in)
+// so the toggle survives the full-page reload that forces every page's data
+// fetch to re-run under the new isDemoMode() state. Without the reload,
+// the identity swaps instantly (appUser is reactive) but each page's fetch
+// effect only runs once on mount, so the numbers on screen never actually
+// change to sample data.
+const DEMO_PREVIEW_KEY = 'wh_demo_preview'
+
 // ── Demo preview fake identity ───────────────────────────────────
 // Shown only when a real, signed-in admin opts in via toggleDemoPreview()
 // (Account Settings panel). Because Supabase is genuinely connected at
@@ -69,9 +77,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canPreviewDemo = realAppUser?.role === 'admin'
   const appUser = isPreviewingDemo && canPreviewDemo ? DEMO_APP_USER : realAppUser
 
+  // Deferred to an effect (not the useState initializer) so server and
+  // client agree on the first render — reading sessionStorage during the
+  // initializer would make the client's first render diverge from the
+  // server's and trip a hydration mismatch.
+  useEffect(() => {
+    if (sessionStorage.getItem(DEMO_PREVIEW_KEY) === '1') setIsPreviewingDemo(true)
+  }, [])
+
   const toggleDemoPreview = useCallback(() => {
-    setIsPreviewingDemo((prev) => (canPreviewDemo ? !prev : false))
-  }, [canPreviewDemo])
+    if (!canPreviewDemo) return
+    const next = !isPreviewingDemo
+    if (next) sessionStorage.setItem(DEMO_PREVIEW_KEY, '1')
+    else sessionStorage.removeItem(DEMO_PREVIEW_KEY)
+    // Full reload, not setIsPreviewingDemo — every page's data-fetch effect
+    // only runs on mount, so a plain state flip would swap the identity
+    // badge instantly but leave already-fetched real numbers on screen.
+    window.location.reload()
+  }, [canPreviewDemo, isPreviewingDemo])
 
   useEffect(() => {
     setDemoPreviewActive(isPreviewingDemo && canPreviewDemo)
@@ -125,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (supabase) await supabase.auth.signOut()
     setAppUser(null)
     setIsPreviewingDemo(false)
+    sessionStorage.removeItem(DEMO_PREVIEW_KEY)
   }, [supabase])
 
   const refreshAppUser = useCallback(async () => {

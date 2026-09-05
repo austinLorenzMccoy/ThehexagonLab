@@ -41,6 +41,7 @@ beforeEach(() => {
   sessionResult = { data: { session: null } }
   appUserResult = { data: null }
   authStateCallback = null
+  sessionStorage.clear()
 })
 
 describe('useAuth', () => {
@@ -188,6 +189,107 @@ describe('AuthProvider', () => {
       await result.current.refreshAppUser()
     })
     expect(mockSupabase.from.mock.calls.length).toBe(callCount)
+  })
+})
+
+describe('demo preview', () => {
+  it('is unavailable to a real non-admin', async () => {
+    sessionResult = { data: { session: { user: { id: 'u1' } } } }
+    appUserResult = {
+      data: {
+        id: 'u1', email: 't@t.com', display_name: 'T', role: 'manager',
+        platform_access: null, worker_id: null, can_view_orders: false,
+        is_active: true, last_sign_in: null, created_at: '', updated_at: '',
+      },
+    }
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.appUser).not.toBeNull())
+    expect(result.current.canPreviewDemo).toBe(false)
+  })
+
+  // toggleDemoPreview persists to sessionStorage and reloads the page —
+  // never a plain state flip — because every page's data-fetch effect only
+  // runs on mount, so without a fresh mount the identity badge would swap
+  // instantly while the numbers on screen kept showing stale real data.
+  it('persists the flag and reloads when a real admin toggles preview on', async () => {
+    const reloadSpy = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload: reloadSpy })
+    sessionResult = { data: { session: { user: { id: 'u1' } } } }
+    appUserResult = {
+      data: {
+        id: 'u1', email: 'real-admin@test.com', display_name: 'Real Admin', role: 'admin',
+        platform_access: null, worker_id: null, can_view_orders: true,
+        is_active: true, last_sign_in: null, created_at: '', updated_at: '',
+      },
+    }
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.appUser).not.toBeNull())
+    expect(result.current.canPreviewDemo).toBe(true)
+    expect(result.current.isPreviewingDemo).toBe(false)
+
+    act(() => result.current.toggleDemoPreview())
+    expect(sessionStorage.getItem('wh_demo_preview')).toBe('1')
+    expect(reloadSpy).toHaveBeenCalledTimes(1)
+
+    vi.unstubAllGlobals()
+  })
+
+  it('never toggles for a non-admin, even if called directly', async () => {
+    const reloadSpy = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload: reloadSpy })
+    sessionResult = { data: { session: { user: { id: 'u1' } } } }
+    appUserResult = {
+      data: {
+        id: 'u1', email: 't@t.com', display_name: 'T', role: 'manager',
+        platform_access: null, worker_id: null, can_view_orders: false,
+        is_active: true, last_sign_in: null, created_at: '', updated_at: '',
+      },
+    }
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.appUser).not.toBeNull())
+
+    act(() => result.current.toggleDemoPreview())
+    expect(sessionStorage.getItem('wh_demo_preview')).toBeNull()
+    expect(reloadSpy).not.toHaveBeenCalled()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('restores the fake identity on mount when the flag was already set (post-reload)', async () => {
+    sessionStorage.setItem('wh_demo_preview', '1')
+    sessionResult = { data: { session: { user: { id: 'u1' } } } }
+    appUserResult = {
+      data: {
+        id: 'u1', email: 'real-admin@test.com', display_name: 'Real Admin', role: 'admin',
+        platform_access: null, worker_id: null, can_view_orders: true,
+        is_active: true, last_sign_in: null, created_at: '', updated_at: '',
+      },
+    }
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.appUser?.id).toBe('demo-admin-001'))
+    expect(result.current.isPreviewingDemo).toBe(true)
+    expect(result.current.appUser?.role).toBe('admin')
+  })
+
+  it('clears the persisted flag and resets preview state on sign out', async () => {
+    sessionStorage.setItem('wh_demo_preview', '1')
+    sessionResult = { data: { session: { user: { id: 'u1' } } } }
+    appUserResult = {
+      data: {
+        id: 'u1', email: 't@t.com', display_name: 'T', role: 'admin',
+        platform_access: null, worker_id: null, can_view_orders: true,
+        is_active: true, last_sign_in: null, created_at: '', updated_at: '',
+      },
+    }
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.appUser?.id).toBe('demo-admin-001'))
+
+    await act(async () => {
+      await result.current.signOut()
+    })
+    expect(result.current.isPreviewingDemo).toBe(false)
+    expect(result.current.appUser).toBeNull()
+    expect(sessionStorage.getItem('wh_demo_preview')).toBeNull()
   })
 })
 
