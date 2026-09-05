@@ -4,7 +4,7 @@
  * Used to pay out approved `payout_requests` (referral commissions and
  * worker early-pay) and, eventually, month-end worker payments. Mirrors
  * the "graceful degradation without keys" pattern used elsewhere in this
- * repo (see lib/demo.ts / doc/backend_wiring_guide.md): every function
+ * repo (see doc/backend_wiring_guide.md): every function
  * here returns a typed `{ ok: false, reason: 'not_configured' }` result
  * instead of throwing when `PAYSTACK_SECRET_KEY` isn't set, so payouts
  * degrade to "approve now, settle manually" rather than crashing.

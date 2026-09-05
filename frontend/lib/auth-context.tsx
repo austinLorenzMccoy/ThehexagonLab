@@ -6,7 +6,6 @@ import React, {
 } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import { isDemoPreviewEnabled } from '@/lib/demo'
 import type { AppUser, UserPermissions, UserRole } from '@/types'
 import { getPermissions } from '@/types'
 
@@ -36,11 +35,12 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 // ── Demo preview fake identity ───────────────────────────────────
-// Shown only when a real admin opts in via toggleDemoPreview(). Because
-// Supabase is genuinely connected at that point, pages that scope queries
-// to the viewer's own id (worker/referrer dashboards, My Team) render this
-// account's real empty state; org-wide admin pages are unaffected, since
-// they aren't filtered by viewer id.
+// Shown only when a real, signed-in admin opts in via toggleDemoPreview()
+// (Account Settings panel). Because Supabase is genuinely connected at
+// that point, pages that scope queries to the viewer's own id
+// (worker/referrer dashboards, My Team) render this account's real empty
+// state; org-wide admin pages are unaffected, since they aren't filtered
+// by viewer id.
 
 const DEMO_APP_USER: AppUser = {
   id: 'demo-admin-001',
@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isPreviewingDemo, setIsPreviewingDemo] = useState(false)
 
-  const canPreviewDemo = isDemoPreviewEnabled() && realAppUser?.role === 'admin'
+  const canPreviewDemo = realAppUser?.role === 'admin'
   const appUser = isPreviewingDemo && canPreviewDemo ? DEMO_APP_USER : realAppUser
 
   const toggleDemoPreview = useCallback(() => {

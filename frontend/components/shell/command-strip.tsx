@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { useTheme } from '@/lib/theme-context'
 import { GlobalSearch } from './global-search'
-import { LogOut, Settings, X, Sun, Moon, Monitor, Bell, HelpCircle, Sparkles } from 'lucide-react'
+import { LogOut, Settings, X, Sun, Moon, Monitor, Bell, HelpCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { setMyPayoutCurrency } from '@/lib/db'
 
@@ -102,18 +102,6 @@ export function CommandStrip() {
 
         <div className="flex items-center gap-2">
           <GlobalSearch />
-
-          {canPreviewDemo && (
-            <button
-              onClick={toggleDemoPreview}
-              className={`rounded p-1.5 transition-colors ${
-                isPreviewingDemo ? 'bg-violet-500/15 text-violet-400' : 'hover:bg-muted text-muted-foreground'
-              }`}
-              title={isPreviewingDemo ? 'Exit demo preview' : 'Preview as Demo Admin'}
-            >
-              <Sparkles className="h-4 w-4" />
-            </button>
-          )}
 
           <Link
             href="/handbook"
@@ -246,6 +234,29 @@ export function CommandStrip() {
                 ))}
               </div>
             </div>
+            {canPreviewDemo && (
+              <div className="rounded-lg border border-border-subtle bg-background/50 p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Demo Preview</p>
+                <div className="mt-1 flex gap-1">
+                  {([false, true] as const).map((on) => (
+                    <button
+                      key={String(on)}
+                      onClick={() => { if (isPreviewingDemo !== on) toggleDemoPreview() }}
+                      className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                        isPreviewingDemo === on
+                          ? 'bg-violet-500 text-white'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {on ? 'On' : 'Off'}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Browse as the fake Demo Admin account, for screenshots or client demos.
+                </p>
+              </div>
+            )}
             {(appUser.role === 'worker' || appUser.role === 'referrer') && (
               <div className="rounded-lg border border-border-subtle bg-background/50 p-3">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Payout Currency</p>
