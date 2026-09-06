@@ -11,6 +11,7 @@ import type {
   Platform,
   PlatformStatsRow,
   PlatformTaskColumn,
+  Project,
   ReferralRow,
   ReferralSummaryRow,
   TaskStatusHistoryRow,
@@ -67,6 +68,14 @@ export const DEMO_TASK_COLUMNS: PlatformTaskColumn[] = [
   { id: 6, platform_id: 3, column_key: 'qualification', column_label: 'Qualification', sort_order: 1, is_active: true },
   { id: 7, platform_id: 3, column_key: 'live', column_label: 'Live tasks', sort_order: 2, is_active: true },
   { id: 8, platform_id: 4, column_key: 'exam', column_label: 'Exam', sort_order: 1, is_active: true },
+]
+
+export const DEMO_PROJECTS: Project[] = [
+  { id: 1, platform_id: 1, name: 'Search quality', status: '✅ Passed', sort_order: 1, is_active: true },
+  { id: 2, platform_id: 1, name: 'Maps eval', status: '🔍 Under Review', sort_order: 2, is_active: true },
+  { id: 3, platform_id: 2, name: 'Network rollout QA', status: '⏳ Pending', sort_order: 1, is_active: true },
+  { id: 4, platform_id: 3, name: 'Response rating', status: '✅ Passed', sort_order: 1, is_active: true },
+  { id: 5, platform_id: 4, name: 'Red teaming', status: '🔍 Under Review', sort_order: 1, is_active: true },
 ]
 
 function tracker(

@@ -17,6 +17,7 @@ import {
   DEMO_PAYROLL,
   DEMO_PLATFORMS,
   DEMO_PLATFORM_STATS,
+  DEMO_PROJECTS,
   DEMO_REFERRALS,
   DEMO_REFERRAL_SUMMARY,
   DEMO_REGISTRY,
@@ -31,7 +32,7 @@ import {
 } from '@/lib/demo-data'
 import type {
   AppUser, WorkerTrackerRow, WorkerRegistryRow,
-  OrderRow, PayrollRow, Platform, PlatformTaskColumn,
+  OrderRow, PayrollRow, Platform, PlatformTaskColumn, Project,
   PlatformStatsRow, TaskStatusHistoryRow, OnboardingRow,
   WorkerTimesheetRow, PaySlipRow, PaymentRow, WarningEventRow,
   WorkerFeedbackRow, DisputeRow, ReferralRow, PayoutRequestRow,
@@ -81,6 +82,29 @@ export async function fetchPlatformTaskColumns(platformSlug: string): Promise<Pl
   return liveOrDemo(
     rows,
     DEMO_TASK_COLUMNS.filter((c) => c.platform_id === platform?.id),
+  )
+}
+
+export async function fetchProjects(platformSlug: string): Promise<Project[]> {
+  const supabase = createClient()
+  const { data, error } = await (supabase as any)
+    .from('projects')
+    .select('*, platforms!inner(slug)')
+    .eq('platforms.slug', platformSlug)
+    .eq('is_active', true)
+    .order('sort_order')
+  if (error) {
+    console.error('fetchProjects:', error.message)
+    const platform = platformsBySlug(platformSlug)
+    return isDemoMode()
+      ? DEMO_PROJECTS.filter((p) => p.platform_id === platform?.id)
+      : []
+  }
+  const rows = (data ?? []) as Project[]
+  const platform = platformsBySlug(platformSlug)
+  return liveOrDemo(
+    rows,
+    DEMO_PROJECTS.filter((p) => p.platform_id === platform?.id),
   )
 }
 

@@ -274,6 +274,8 @@ Where an admin manages everyone's access and the platforms themselves.
 
 Add a new annotation platform, or edit an existing one's custom task columns, without needing a code change. This is what powers the platform tabs seen everywhere else in the app.
 
+Each platform also has its own **Projects** list — click "Projects" on a platform card to add, rename, reorder, deactivate or delete projects, and set each one's review status (Passed, Under Review, Failed, Pending).
+
 ## Frequently asked questions
 
 **I just signed in and my Dashboard is empty, or I can't see anything.**
