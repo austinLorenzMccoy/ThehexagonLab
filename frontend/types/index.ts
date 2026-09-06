@@ -46,6 +46,17 @@ export interface PlatformTaskColumn {
   is_active: boolean
 }
 
+export type ProjectStatus = '✅ Passed' | '🔍 Under Review' | '❌ Failed' | '⏳ Pending'
+
+export interface Project {
+  id: number
+  platform_id: number
+  name: string
+  status: ProjectStatus
+  sort_order: number
+  is_active: boolean
+}
+
 export type YNStatus =
   | '✅ Yes' | '❌ No' | '⏳ Pending' | '🔄 In Progress' | '➖ N/A'
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Platform, PlatformTaskColumn } from '@/types'
+import type { Platform, PlatformTaskColumn, Project, ProjectStatus } from '@/types'
 import {
   PLATFORM_COLOR_PRESETS,
   PLATFORM_ICON_PRESETS,
@@ -25,7 +25,10 @@ import {
   Trash2,
   GripVertical,
   Columns3,
+  FolderKanban,
 } from 'lucide-react'
+
+const PROJECT_STATUS_OPTIONS: ProjectStatus[] = ['⏳ Pending', '🔍 Under Review', '✅ Passed', '❌ Failed']
 
 interface PlatformWithUsage extends Platform {
   usage?: PlatformUsage
@@ -65,6 +68,14 @@ export function PlatformManager({ onPlatformsChanged }: { onPlatformsChanged?: (
   const [editingColId, setEditingColId] = useState<number | null>(null)
   const [editColLabel, setEditColLabel] = useState('')
 
+  // Projects
+  const [expandedProjectsId, setExpandedProjectsId] = useState<number | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
+  const [editProjectName, setEditProjectName] = useState('')
+
   const loadPlatforms = useCallback(async () => {
     const res = await fetch('/api/admin/platforms')
     if (!res.ok) {
@@ -97,6 +108,22 @@ export function PlatformManager({ onPlatformsChanged }: { onPlatformsChanged?: (
   useEffect(() => {
     if (expandedId != null) loadColumns(expandedId)
   }, [expandedId, loadColumns])
+
+  const loadProjects = useCallback(async (platformId: number) => {
+    setProjectsLoading(true)
+    const res = await fetch(`/api/admin/platforms/projects?platform_id=${platformId}`)
+    if (res.ok) {
+      const data = await res.json()
+      setProjects(data.projects ?? [])
+    } else {
+      setProjects([])
+    }
+    setProjectsLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (expandedProjectsId != null) loadProjects(expandedProjectsId)
+  }, [expandedProjectsId, loadProjects])
 
   useEffect(() => {
     if (!slugTouched) {
@@ -390,6 +417,132 @@ export function PlatformManager({ onPlatformsChanged }: { onPlatformsChanged?: (
     }
   }
 
+  const addProject = async (platformId: number) => {
+    if (!newProjectName.trim()) return
+    setSaving(true)
+    const res = await fetch('/api/admin/platforms/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform_id: platformId,
+        name: newProjectName.trim(),
+      }),
+    })
+    const data = await res.json()
+    setSaving(false)
+    if (!res.ok) {
+      flash('error', data.error || 'Failed to add project')
+      return
+    }
+    setNewProjectName('')
+    flash('success', 'Project added')
+    await loadProjects(platformId)
+  }
+
+  const saveProject = async (projectId: number, platformId: number) => {
+    setSaving(true)
+    const res = await fetch('/api/admin/platforms/projects', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: projectId, name: editProjectName }),
+    })
+    const data = await res.json()
+    setSaving(false)
+    if (!res.ok) {
+      flash('error', data.error || 'Failed to update project')
+      return
+    }
+    setEditingProjectId(null)
+    flash('success', 'Project updated')
+    await loadProjects(platformId)
+  }
+
+  const updateProjectStatus = async (project: Project, status: ProjectStatus) => {
+    setSaving(true)
+    const res = await fetch('/api/admin/platforms/projects', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: project.id, status }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const data = await res.json()
+      flash('error', data.error || 'Failed to update status')
+      return
+    }
+    await loadProjects(project.platform_id)
+  }
+
+  const toggleProjectActive = async (project: Project) => {
+    setSaving(true)
+    const res = await fetch('/api/admin/platforms/projects', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: project.id, is_active: !project.is_active }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const data = await res.json()
+      flash('error', data.error || 'Failed to update project')
+      return
+    }
+    await loadProjects(project.platform_id)
+  }
+
+  const removeProject = async (project: Project) => {
+    const hard = !project.is_active
+      ? window.confirm(`Permanently delete project "${project.name}"? This cannot be undone.`)
+      : false
+
+    if (!hard && project.is_active) {
+      const soft = window.confirm(`Deactivate project "${project.name}"? It will hide from pickers.`)
+      if (!soft) return
+    } else if (!hard) {
+      return
+    }
+
+    setSaving(true)
+    const res = await fetch('/api/admin/platforms/projects', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: project.id, hard }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const data = await res.json()
+      flash('error', data.error || 'Failed to remove project')
+      return
+    }
+    flash('success', hard ? 'Project deleted' : 'Project deactivated')
+    await loadProjects(project.platform_id)
+  }
+
+  const moveProject = async (platformId: number, index: number, direction: -1 | 1) => {
+    const next = index + direction
+    if (next < 0 || next >= projects.length) return
+    const ordered = [...projects]
+    const [item] = ordered.splice(index, 1)
+    ordered.splice(next, 0, item)
+    setProjects(ordered)
+
+    setSaving(true)
+    const res = await fetch('/api/admin/platforms/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'reorder',
+        platform_id: platformId,
+        ordered_ids: ordered.map((p) => p.id),
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const data = await res.json()
+      flash('error', data.error || 'Failed to reorder')
+      await loadProjects(platformId)
+    }
+  }
+
   const cloneColumnsInto = async (targetId: number, sourceId: number) => {
     setSaving(true)
     const res = await fetch('/api/admin/platforms/columns', {
@@ -606,6 +759,7 @@ export function PlatformManager({ onPlatformsChanged }: { onPlatformsChanged?: (
           platforms.map((p) => {
             const usage = usageMap[p.id] ?? emptyUsage()
             const isExpanded = expandedId === p.id
+            const isProjectsExpanded = expandedProjectsId === p.id
             const isEditing = editingId === p.id
 
             return (
@@ -743,6 +897,17 @@ export function PlatformManager({ onPlatformsChanged }: { onPlatformsChanged?: (
                             <Columns3 className="h-3 w-3" />
                             Columns
                             {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setExpandedProjectsId(isProjectsExpanded ? null : p.id)
+                              setMessage(null)
+                            }}
+                            className="flex items-center gap-1 rounded border border-border-subtle px-2.5 py-1.5 text-xs hover:bg-muted"
+                          >
+                            <FolderKanban className="h-3 w-3" />
+                            Projects
+                            {isProjectsExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                           </button>
                           <button
                             onClick={() => toggleActive(p)}
@@ -933,6 +1098,155 @@ export function PlatformManager({ onPlatformsChanged }: { onPlatformsChanged?: (
 
                     <div className="border-t border-border-subtle pt-3">
                       <RevenueSplitPanel platformId={p.id} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Projects panel */}
+                {isProjectsExpanded && (
+                  <div className="border-t border-border-subtle bg-muted/20 p-4 space-y-3">
+                    <p className="text-xs font-medium text-foreground">
+                      Projects for {p.label}
+                    </p>
+
+                    {projectsLoading ? (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {projects.length === 0 && (
+                          <p className="text-xs text-muted-foreground py-2">
+                            No projects yet. Add one below.
+                          </p>
+                        )}
+                        {projects.map((proj, index) => (
+                          <div
+                            key={proj.id}
+                            className={`flex flex-wrap items-center gap-2 rounded-md border px-2.5 py-2 ${
+                              proj.is_active
+                                ? 'border-border-subtle bg-card'
+                                : 'border-border-subtle bg-muted/40 opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-0.5 text-muted-foreground">
+                              <GripVertical className="h-3.5 w-3.5" />
+                              <button
+                                type="button"
+                                disabled={index === 0 || saving}
+                                onClick={() => moveProject(p.id, index, -1)}
+                                className="rounded p-0.5 hover:bg-muted disabled:opacity-30"
+                                title="Move up"
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={index === projects.length - 1 || saving}
+                                onClick={() => moveProject(p.id, index, 1)}
+                                className="rounded p-0.5 hover:bg-muted disabled:opacity-30"
+                                title="Move down"
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
+                            </div>
+
+                            {editingProjectId === proj.id ? (
+                              <input
+                                value={editProjectName}
+                                onChange={(e) => setEditProjectName(e.target.value)}
+                                className="flex-1 min-w-[120px] rounded border border-border-subtle bg-background px-2 py-1 text-xs"
+                              />
+                            ) : (
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-medium text-foreground">
+                                  {proj.name}
+                                </span>
+                                {!proj.is_active && (
+                                  <span className="ml-2 text-[10px] text-muted-foreground">inactive</span>
+                                )}
+                              </div>
+                            )}
+
+                            <select
+                              value={proj.status}
+                              onChange={(e) => updateProjectStatus(proj, e.target.value as ProjectStatus)}
+                              disabled={saving}
+                              className="rounded border border-border-subtle bg-background px-1.5 py-1 text-[10px] disabled:opacity-50"
+                            >
+                              {PROJECT_STATUS_OPTIONS.map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+
+                            <div className="flex gap-1">
+                              {editingProjectId === proj.id ? (
+                                <>
+                                  <button
+                                    onClick={() => saveProject(proj.id, p.id)}
+                                    disabled={saving}
+                                    className="rounded bg-ops px-2 py-1 text-[10px] text-white disabled:opacity-50"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingProjectId(null)}
+                                    className="rounded border border-border-subtle px-2 py-1 text-[10px]"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setEditingProjectId(proj.id)
+                                      setEditProjectName(proj.name)
+                                    }}
+                                    className="rounded border border-border-subtle px-2 py-1 text-[10px] hover:bg-muted"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => toggleProjectActive(proj)}
+                                    disabled={saving}
+                                    className="rounded border border-border-subtle px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+                                  >
+                                    {proj.is_active ? 'Hide' : 'Show'}
+                                  </button>
+                                  <button
+                                    onClick={() => removeProject(proj)}
+                                    disabled={saving}
+                                    className="rounded border border-red-500/20 px-2 py-1 text-[10px] text-red-600 dark:text-red-400 hover:bg-red-500/5 disabled:opacity-50"
+                                  >
+                                    {proj.is_active ? 'Deactivate' : 'Delete'}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <input
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') addProject(p.id)
+                        }}
+                        placeholder="New project name"
+                        className="min-w-[200px] flex-1 rounded-md border border-border-subtle bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ops/40"
+                      />
+                      <button
+                        onClick={() => addProject(p.id)}
+                        disabled={saving || !newProjectName.trim()}
+                        className="flex items-center gap-1 rounded-md bg-ops px-3 py-1.5 text-xs font-medium text-white hover:bg-ops-dark disabled:opacity-50"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add Project
+                      </button>
                     </div>
                   </div>
                 )}
