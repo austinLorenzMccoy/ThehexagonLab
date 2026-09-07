@@ -45,6 +45,8 @@ const rolePermissions: Record<UserRole, string[]> = {
     'View Payroll',
     'View Reports',
     'Issue Pay Slips & Settle Payments',
+    'Issue / Revoke Warnings',
+    'Review & Resolve Disputes',
     'Manage Partner Contacts',
     'Export Data',
   ],
