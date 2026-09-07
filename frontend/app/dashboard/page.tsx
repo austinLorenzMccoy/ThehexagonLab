@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { AccessDenied } from '@/components/ui/access-denied'
 import { SummaryCard } from '@/components/dashboard/summary-card'
-import { fetchPlatformStats } from '@/lib/db'
+import { fetchPlatformStats, fetchPartnerContacts, fetchAllPayoutRequests } from '@/lib/db'
 import {
   WorkersByPlatformChart,
   PayrollByPlatformChart,
@@ -13,12 +13,14 @@ import {
 } from '@/components/dashboard/charts'
 import { WorkerPortal } from '@/components/worker/worker-portal'
 import { ReferrerPortal } from '@/components/worker/referrer-portal'
-import type { PlatformStatsRow } from '@/types'
-import { Users, ShoppingCart, AlertTriangle, DollarSign, Loader2 } from 'lucide-react'
+import type { PlatformStatsRow, PartnerContactRow, PayoutRequestRow } from '@/types'
+import { Users, Contact, Wallet, Clock, Loader2 } from 'lucide-react'
 
 export default function DashboardPage() {
   const { hasAccess, appUser, isLoading: authLoading } = useAuth()
   const [stats, setStats] = useState<PlatformStatsRow[]>([])
+  const [partners, setPartners] = useState<PartnerContactRow[]>([])
+  const [payouts, setPayouts] = useState<PayoutRequestRow[]>([])
   const [loading, setLoading] = useState(true)
 
   // Worker Recovery System — `worker` and `referrer` land on their own
@@ -29,10 +31,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (isSelfServiceRole) { setLoading(false); return }
-    fetchPlatformStats().then((data) => {
-      setStats(data)
-      setLoading(false)
-    })
+    Promise.all([fetchPlatformStats(), fetchPartnerContacts(), fetchAllPayoutRequests()]).then(
+      ([statsData, partnerData, payoutData]) => {
+        setStats(statsData)
+        setPartners(partnerData)
+        setPayouts(payoutData)
+        setLoading(false)
+      }
+    )
   }, [isSelfServiceRole])
 
   if (authLoading) {
@@ -61,6 +67,14 @@ export default function DashboardPage() {
     { workers: 0, orders: 0, issues: 0, warnings: 0, payroll: 0 }
   )
 
+  const totalPartners = partners.length
+  const totalPayouts = payouts
+    .filter((p) => p.status === 'paid')
+    .reduce((sum, p) => sum + Number(p.amount_settled ?? p.amount_usd), 0)
+  const pendingPayout = payouts
+    .filter((p) => p.status === 'pending' || p.status === 'approved' || p.status === 'processing')
+    .reduce((sum, p) => sum + Number(p.amount_usd), 0)
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -85,20 +99,20 @@ export default function DashboardPage() {
           icon={<Users className="h-5 w-5" />}
         />
         <SummaryCard
-          label="Total Orders"
-          value={totals.orders}
-          icon={<ShoppingCart className="h-5 w-5" />}
+          label="Total Partners"
+          value={totalPartners}
+          icon={<Contact className="h-5 w-5" />}
         />
         <SummaryCard
-          label="Active Warnings"
-          value={totals.warnings}
-          icon={<AlertTriangle className="h-5 w-5" />}
-          variant={totals.warnings > 0 ? 'accent' : 'default'}
+          label="Total Payouts"
+          value={`$${totalPayouts.toLocaleString()}`}
+          icon={<Wallet className="h-5 w-5" />}
         />
         <SummaryCard
-          label="Total Payroll"
-          value={`$${totals.payroll.toLocaleString()}`}
-          icon={<DollarSign className="h-5 w-5" />}
+          label="Pending Payout"
+          value={`$${pendingPayout.toLocaleString()}`}
+          icon={<Clock className="h-5 w-5" />}
+          variant={pendingPayout > 0 ? 'accent' : 'default'}
         />
       </div>
 

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { Suspense, useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/lib/toast-context'
 import { AccessDenied } from '@/components/ui/access-denied'
@@ -18,9 +19,13 @@ const REFERRAL_STATUSES: ReferralStatus[] = ['pending', 'active', 'paid']
  *  nothing here — they see their own read-only view on /dashboard via
  *  ReferrerPortal. The "all referred workers must be paid" gate is
  *  enforced in the database (trg_payout_gating), not just in the UI. */
-export default function ReferralsAdminPage() {
+function ReferralsAdminPageInner() {
   const { hasAccess, appUser } = useAuth()
   const { toast } = useToast()
+  // Deep-link from the Onboarding page: clicking a "Referred By" entry
+  // there jumps here pre-filtered to the matching referral(s), so the
+  // two records read as linked even though they aren't a hard FK.
+  const searchParams = useSearchParams()
 
   const [referrals, setReferrals] = useState<ReferralRow[]>([])
   const [payouts, setPayouts] = useState<PayoutRequestRow[]>([])
@@ -30,6 +35,12 @@ export default function ReferralsAdminPage() {
   const [showForm, setShowForm] = useState(false)
   const [savingCommissionId, setSavingCommissionId] = useState<string | null>(null)
   const [editingRow, setEditingRow] = useState<ReferralRow | null>(null)
+  const [nameFilter, setNameFilter] = useState('')
+
+  useEffect(() => {
+    const fromLink = searchParams.get('search')
+    if (fromLink) setNameFilter(fromLink)
+  }, [searchParams])
 
   const load = useCallback(async () => {
     const [r, p, users, co] = await Promise.all([
@@ -149,6 +160,13 @@ export default function ReferralsAdminPage() {
     )
   }
 
+  const filteredReferrals = nameFilter
+    ? referrals.filter((r) =>
+        r.referred_name.toLowerCase().includes(nameFilter.toLowerCase()) ||
+        (r.referred_email ?? '').toLowerCase().includes(nameFilter.toLowerCase())
+      )
+    : referrals
+
   return (
     <>
     <div className="space-y-6">
@@ -189,11 +207,23 @@ export default function ReferralsAdminPage() {
       )}
 
       <div className="rounded-lg border border-border-subtle bg-card p-4">
-        <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <UserPlus className="h-4 w-4" /> Referrals
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <UserPlus className="h-4 w-4" /> Referrals
+          </h2>
+          {nameFilter && (
+            <button
+              onClick={() => setNameFilter('')}
+              className="flex items-center gap-1.5 rounded-full bg-ops/10 px-3 py-1 text-xs font-medium text-ops hover:bg-ops/20 transition-colors"
+            >
+              Filtered by &ldquo;{nameFilter}&rdquo; <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
         {referrals.length === 0 ? (
           <p className="text-xs text-muted-foreground py-6 text-center">No referrals recorded yet</p>
+        ) : filteredReferrals.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-6 text-center">No referrals match &ldquo;{nameFilter}&rdquo;</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -208,7 +238,7 @@ export default function ReferralsAdminPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
-                {referrals.map((r) => (
+                {filteredReferrals.map((r) => (
                   <tr key={r.id}>
                     <td className="py-2 pr-3 font-medium text-foreground">{r.referred_name}</td>
                     <td className="py-2 pr-3 text-xs text-muted-foreground">{r.referred_email ?? '—'}</td>
@@ -333,5 +363,17 @@ export default function ReferralsAdminPage() {
       </div>
     )}
     </>
+  )
+}
+
+export default function ReferralsAdminPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <ReferralsAdminPageInner />
+    </Suspense>
   )
 }

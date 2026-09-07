@@ -17,7 +17,7 @@ Hexagon LABS has five roles. Everything else in this handbook — what you can s
 | Role | What they can do |
 | --- | --- |
 | **Admin** | Everything: every workforce tool, payroll, pay slips, warnings, disputes, feedback, referrals, reports, activity/audit logs, and user & platform administration. |
-| **Manager** | Their own assigned workers in Tracker, Registry and Onboarding; payroll and pay slips for their team; partner contacts; reports; and My Team. Cannot see Warnings, Disputes or Feedback. |
+| **Manager** | Their own assigned workers in Tracker, Registry and Onboarding; payroll and pay slips for their team; partner contacts; reports; My Team; and Warnings & Disputes. Cannot see Feedback. |
 | **Supervisor** | Read and light-edit access to Tracker, Registry and Onboarding for assigned workers. No payroll editing, no admin tools. |
 | **Worker** | A private self-service Dashboard only: log hours, view pay slips and earnings, check warning standing, send feedback, raise disputes. |
 | **Referrer** | A private self-service Dashboard only: track referred workers, watch commissions add up, and request payouts. |
@@ -41,7 +41,7 @@ Every worker has a warning standing shown as five dots. An admin issues a warnin
 
 Reaching five active warnings automatically ends that worker's contract — shown directly on the worker's own Dashboard, so nobody is caught off guard.
 
-Workers can push back with **Raise a Dispute** on their Dashboard; admins resolve disputes from **Warnings & Disputes**.
+Workers can push back with **Raise a Dispute** on their Dashboard; admins and managers resolve disputes from **Warnings & Disputes**.
 
 ### How payments actually work
 
@@ -67,7 +67,7 @@ Dashboard is the one link every single person has — and the one page where wha
 
 #### Admin, Manager & Supervisor: the Ops Overview
 
-A read-only command view: summary cards for total workers, orders, active warnings and total payroll; four charts covering workers and payroll by platform, warning breakdown, and order status; and a per-platform grid of worker, order and payroll counts with serious/banned badges.
+A read-only command view: summary cards for total workers, total partners, total payouts and pending payout; four charts covering workers and payroll by platform, warning breakdown, and order status; and a per-platform grid of worker, order and payroll counts with serious/banned badges.
 
 #### Worker: your self-service portal
 
@@ -113,6 +113,7 @@ Your day-to-day operations board — one row per worker, one tab per platform, u
 The employment record — set once when someone joins. For tracking their day-to-day status, use Tracker instead.
 
 - Add Worker: project/task, owner name, account type (Full-Time, Part-Time, Contractor, Intern, Freelance), email, start date, notes.
+- Import a CSV/Excel file in bulk to register many workers from an existing record at once, same as Tracker.
 - Admins can tick "Also create a login account for this person," which opens a Paystack payout-code form right away.
 - Geowork Test column tracks a platform's geography-based eligibility test: Passed, Failed, Pending, Retake, or Exempted.
 - A "Linked" badge shows whether a record already has a login account attached.
@@ -127,6 +128,7 @@ Tracks applicants through your hiring pipeline, per platform, before they become
 - Fields per applicant: name, email, a masked platform-account password (an eye icon reveals it), phone, country, referred by, and date applied.
 - Status pills — Pending, Accepted, Rejected, In Review, Withdrawn — with live counts. Moving to a final status stamps the resolution date automatically.
 - Summary cards show how many applicants sit in each stage.
+- The "Referred by" name is a link straight through to the matching entry on **Referrals & Payouts**, for anyone with access to that page.
 
 > **Good to know:** That password field is the applicant's password for the annotation platform itself (their Oneforma login, say) — it has nothing to do with signing in to Hexagon LABS. Adding, editing or deleting applicants needs a permission an admin grants; without it, the pipeline is read-only.
 
@@ -193,9 +195,9 @@ Where referral relationships, commissions and payout requests get managed.
 
 ### Warnings & Disputes
 
-**Who can access this:** Admin
+**Who can access this:** Admin, Manager
 
-Where formal warnings are issued and worker disputes get resolved. Managers don't have access to this page.
+Where formal warnings are issued and worker disputes get resolved.
 
 - Left panel: every worker with a five-dot warning meter and their open-dispute count — click a worker to open their case.
 - Issue a warning with a reason and an optional comment the worker will see.
@@ -290,8 +292,8 @@ Every worker you referred needs to be marked paid before a payout request is all
 **I edited a cell in Tracker but there was no Save button — did it work?**
 Yes. Most Tracker and table cells save automatically the moment you click away. Refresh the page if you want to double-check.
 
-**Why can't I find Warnings, Disputes or Feedback in my nav?**
-They're admin-only by design, even for managers, so workers can raise concerns without their manager seeing them.
+**Why can't I find Feedback in my nav?**
+It's admin-only by design, even for managers, so workers can raise concerns without their manager seeing them.
 
 **Why does the same "Dashboard" link show something completely different for a coworker?**
 Dashboard is role-aware — admins, managers and supervisors see an operations overview, while workers and referrers each get their own private self-service portal.

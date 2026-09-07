@@ -14,7 +14,8 @@ import {
 import type { Platform, WorkerRegistryRow, AccountType, GeoworkStatus } from '@/types'
 import { useToast } from '@/lib/toast-context'
 import { PaystackRecipientForm } from '@/components/admin/paystack-recipient-form'
-import { Search, UserPlus, Loader2, X, Pencil, Trash2, Link2, CircleCheck } from 'lucide-react'
+import { ImportDialog, IMPORT_CONFIGS } from '@/components/import/import-dialog'
+import { Search, UserPlus, Loader2, X, Pencil, Trash2, Link2, CircleCheck, Upload } from 'lucide-react'
 
 const ACCOUNT_TYPES: AccountType[] = ['Full-Time', 'Part-Time', 'Contractor', 'Intern', 'Freelance']
 const GEOWORK_OPTIONS: GeoworkStatus[] = ['✅ Passed', '❌ Failed', '⏳ Pending', '🔄 Retake', '⭕ Exempted']
@@ -28,6 +29,7 @@ export default function RegistryPage() {
   const [tableLoading, setTableLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [editingRow, setEditingRow] = useState<WorkerRegistryRow | null>(null)
   const [createAccount, setCreateAccount] = useState(false)
   const [provisioning, setProvisioning] = useState(false)
@@ -165,13 +167,22 @@ export default function RegistryPage() {
             day-to-day task status, see the Tracker instead.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all"
-        >
-          {showForm ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
-          {showForm ? 'Cancel' : 'Add Worker'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 rounded-lg brand-gradient px-4 py-2 text-sm font-medium text-white transition-all"
+          >
+            {showForm ? <X className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+            {showForm ? 'Cancel' : 'Add Worker'}
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-2 rounded-lg border border-ops/20 bg-ops/5 px-4 py-2 text-sm font-medium text-ops hover:bg-ops/10 transition-colors"
+          >
+            <Upload className="h-4 w-4" />
+            Import
+          </button>
+        </div>
       </div>
 
       {/* Add worker form */}
@@ -363,6 +374,14 @@ export default function RegistryPage() {
         </div>
       )}
     </div>
+
+    {showImport && activePlatform && (
+      <ImportDialog
+        config={{ ...IMPORT_CONFIGS.workers_registry, platformId: activePlatform.id }}
+        onComplete={() => { setShowImport(false); loadRegistry(selectedPlatform) }}
+        onClose={() => setShowImport(false)}
+      />
+    )}
 
     {/* Edit Modal */}
     {editingRow && (

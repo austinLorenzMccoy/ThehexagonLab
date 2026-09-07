@@ -197,7 +197,7 @@ export interface UserPermissions {
   // Worker Recovery System — additive, does not change any flag above.
   isWorker: boolean
   isReferrer: boolean
-  /** Admin-only: managers no longer issue warnings or resolve disputes. */
+  /** Admin + manager: issue/revoke warnings and resolve disputes. */
   canManageWarnings: boolean
   canManageDisputes: boolean
   canViewFeedback: boolean
@@ -219,8 +219,8 @@ export function getPermissions(user: AppUser): UserPermissions {
     assignedPlatforms:   user.platform_access,
     isWorker:                 user.role === 'worker',
     isReferrer:               user.role === 'referrer',
-    canManageWarnings:        user.role === 'admin',
-    canManageDisputes:        user.role === 'admin',
+    canManageWarnings:        ['admin', 'manager'].includes(user.role),
+    canManageDisputes:        ['admin', 'manager'].includes(user.role),
     canViewFeedback:          user.role === 'admin',
     canManagePayouts:         user.role === 'admin',
     canManagePartnerContacts: ['admin', 'manager'].includes(user.role),

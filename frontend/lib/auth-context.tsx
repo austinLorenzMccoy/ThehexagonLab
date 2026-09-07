@@ -167,10 +167,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const accessMap: Record<UserRole, string[]> = {
       admin:      ['dashboard', 'tracker', 'registry', 'onboarding', 'orders', 'payroll', 'reports', 'activity', 'audit', 'admin',
                    'warnings', 'disputes', 'feedback', 'referrals', 'partners', 'pay-slips'],
-      // Managers manage Pay Slips (issue + settle month-end payment)
-      // instead of Warnings & Disputes, which are admin-only.
+      // Managers manage Pay Slips (issue + settle month-end payment) and
+      // now also Warnings & Disputes.
       manager:    ['dashboard', 'my-team', 'tracker', 'registry', 'onboarding', 'payroll', 'reports',
-                   'partners', 'pay-slips',
+                   'partners', 'pay-slips', 'warnings', 'disputes',
                    ...(appUser.can_view_orders ? ['orders'] : [])],
       supervisor: ['dashboard', 'tracker', 'registry',
                    ...(appUser.can_view_orders ? ['orders'] : [])],

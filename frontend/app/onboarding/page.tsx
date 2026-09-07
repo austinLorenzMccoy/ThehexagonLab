@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import { AccessDenied } from '@/components/ui/access-denied'
 import {
@@ -13,7 +14,7 @@ import {
 import type { Platform, OnboardingRow, ApplicationStatus } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/lib/toast-context'
-import { Plus, Loader2, X, Eye, EyeOff, Trash2, Pencil } from 'lucide-react'
+import { Plus, Loader2, X, Eye, EyeOff, Trash2, Pencil, ExternalLink } from 'lucide-react'
 
 const STATUS_OPTIONS: ApplicationStatus[] = [
   '⏳ Pending', '✅ Accepted', '❌ Rejected', '🔄 In Review', '⚫ Withdrawn',
@@ -377,7 +378,19 @@ export default function OnboardingPage() {
                   </td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{row.phone ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-foreground">{row.country ?? '—'}</td>
-                  <td className="px-3 py-2 text-xs text-foreground">{row.referral ?? '—'}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {row.referral && hasAccess('referrals') ? (
+                      <Link
+                        href={`/referrals?search=${encodeURIComponent(row.referral)}`}
+                        className="inline-flex items-center gap-1 text-ops hover:underline"
+                        title="View this referral on the Referrals page"
+                      >
+                        {row.referral} <ExternalLink className="h-3 w-3" />
+                      </Link>
+                    ) : (
+                      <span className="text-foreground">{row.referral ?? '—'}</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     {permissions?.canEditOrders ? (
                       <select

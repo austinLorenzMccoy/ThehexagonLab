@@ -197,11 +197,13 @@ export const DEMO_REFERRALS: ReferralRow[] = [
 
 export const DEMO_PAYOUT_REQUESTS: PayoutRequestRow[] = [
   { id: 'demo-po-001', requester_user_id: DEMO_REFERRER_USER_ID, type: 'referral_commission', amount_usd: 40, status: 'pending', paystack_reference: null, notes: null, requested_at: '2026-08-20T00:00:00Z', processed_by: null, processed_at: null },
+  { id: 'demo-po-002', requester_user_id: DEMO_WORKER_USER_ID, type: 'worker_early_pay', amount_usd: 150, status: 'paid', paystack_reference: 'PSK-DEMO-002', notes: null, requested_at: '2026-08-05T00:00:00Z', processed_by: 'demo-admin-001', processed_at: '2026-08-06T00:00:00Z' },
 ]
 
 export const DEMO_PARTNER_CONTACTS: PartnerContactRow[] = [
   { id: 'demo-pc-001', name: 'Nora Adeyemi', email: 'nora@preview.workershub', phone: null, country: 'NG', contact_type: 'worker', source: 'Excel import', notes: null, created_by: 'demo-admin-001', created_at: now },
   { id: 'demo-pc-002', name: 'Global Data Partners Ltd', email: 'ops@globaldatapartners.example', phone: '+1-555-0100', country: 'US', contact_type: 'partner', source: 'Manual', notes: 'Upstream client — future outreach', created_by: 'demo-admin-001', created_at: now },
+  { id: 'demo-pc-003', name: 'Bright Rater Collective', email: 'hello@brightrater.example', phone: '+44-20-5550-0142', country: 'GB', contact_type: 'partner', source: 'Manual', notes: 'Prospective annotation vendor', created_by: 'demo-admin-001', linked_user_id: null, created_at: now },
 ]
 
 export const DEMO_WORKER_EARNINGS_SUMMARY: WorkerEarningsSummaryRow = {
