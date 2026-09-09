@@ -74,7 +74,7 @@ export default function LandingPage() {
                 <p className="mt-1 text-sm text-gray-500">AI Platforms</p>
               </div>
               <div>
-                <p className="text-4xl font-bold text-white">4</p>
+                <p className="text-4xl font-bold text-white">5</p>
                 <p className="mt-1 text-sm text-gray-500">Role Tiers</p>
               </div>
               <div>
@@ -134,7 +134,7 @@ export default function LandingPage() {
               {
                 icon: <Shield className="h-6 w-6" />,
                 title: 'Role-Based Access',
-                desc: '4-tier role system — Admin, Manager, Supervisor, Worker — with row-level security enforced at the database.',
+                desc: '5-tier role system — Admin, Manager, Supervisor, Worker, Referrer — with row-level security enforced at the database.',
               },
               {
                 icon: <Globe className="h-6 w-6" />,
