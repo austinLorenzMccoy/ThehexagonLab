@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, Shield, BarChart3, Users, Zap, Globe, Lock } from 'lucide-react'
+import { ArrowRight, Shield, BarChart3, Users, Zap, Globe, Lock, FolderKanban, Wallet } from 'lucide-react'
 
 export default function LandingPage() {
   return (
@@ -119,7 +119,17 @@ export default function LandingPage() {
               {
                 icon: <Users className="h-6 w-6" />,
                 title: 'Field Roster',
-                desc: 'Complete worker registry with geo-work test tracking, account types, and platform assignments.',
+                desc: 'Complete worker registry with geo-work test tracking, account types, platform assignments, and bulk Excel/CSV import.',
+              },
+              {
+                icon: <FolderKanban className="h-6 w-6" />,
+                title: 'Projects',
+                desc: 'Track a per-platform list of projects with review status — Passed, Under Review, Failed, or Pending.',
+              },
+              {
+                icon: <Wallet className="h-6 w-6" />,
+                title: 'Referrals & Payouts',
+                desc: 'Track partners, payout status, and pending payouts, with onboarding referrals linked straight through to the payout record.',
               },
               {
                 icon: <Shield className="h-6 w-6" />,
