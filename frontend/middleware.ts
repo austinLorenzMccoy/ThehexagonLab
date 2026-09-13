@@ -3,9 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const PROTECTED     = ['/dashboard','/my-team','/tracker','/registry','/onboarding','/orders','/payroll','/reports','/worker','/activity','/audit','/admin',
                         '/warnings','/disputes','/feedback','/referrals','/partners','/pay-slips']
-// Managers manage Pay Slips instead of Warnings & Disputes, which are
-// admin-only from here (see 20260903010000_manager_permission_swap.sql).
-const ADMIN_ONLY    = ['/admin','/activity','/audit','/feedback','/warnings','/disputes']
+const ADMIN_ONLY    = ['/admin','/activity','/audit','/feedback']
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
