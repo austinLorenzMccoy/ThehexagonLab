@@ -165,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasAccess = useCallback((channel: string): boolean => {
     if (!appUser) return false
     const accessMap: Record<UserRole, string[]> = {
-      admin:      ['dashboard', 'tracker', 'registry', 'onboarding', 'orders', 'payroll', 'reports', 'activity', 'audit', 'admin',
+      admin:      ['dashboard', 'teams', 'tracker', 'registry', 'onboarding', 'orders', 'payroll', 'reports', 'activity', 'audit', 'admin',
                    'warnings', 'disputes', 'feedback', 'referrals', 'partners', 'pay-slips'],
       // Managers manage Pay Slips (issue + settle month-end payment) and
       // now also Warnings & Disputes.

@@ -256,6 +256,29 @@ export async function fetchMyTeamActivity(
   return liveOrDemo((data ?? []) as any as TaskStatusHistoryRow[], demo)
 }
 
+// Admin-only: team size per manager, for the manager picker on /teams.
+// Same worker_tracker rows fetchMyTeamTracker reads for a single manager —
+// admin's "true" tracker_select RLS branch already permits this — just
+// grouped by manager_id in one query instead of one query per manager.
+export async function fetchTeamCountsByManager(): Promise<Record<string, number>> {
+  const supabase = createClient()
+  const { data, error } = await (supabase as any)
+    .from('worker_tracker')
+    .select('manager_id')
+    .not('manager_id', 'is', null)
+
+  const demo = DEMO_TRACKER.filter((r) => r.manager_id)
+  if (error) { console.error('fetchTeamCountsByManager:', error.message); return isDemoMode() ? countByManager(demo) : {} }
+  return countByManager(liveOrDemo((data ?? []) as { manager_id: string | null }[], demo))
+}
+
+function countByManager(rows: { manager_id: string | null }[]): Record<string, number> {
+  return rows.reduce((acc, r) => {
+    if (r.manager_id) acc[r.manager_id] = (acc[r.manager_id] ?? 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+}
+
 // ── Workers registry ────────────────────────────────────────────
 
 export async function fetchRegistryByPlatform(platformSlug: string): Promise<WorkerRegistryRow[]> {

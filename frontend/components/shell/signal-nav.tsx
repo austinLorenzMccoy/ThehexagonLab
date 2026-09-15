@@ -21,6 +21,7 @@ import {
   Contact,
   Receipt,
   UserCheck,
+  UsersRound,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -36,6 +37,12 @@ const channels = [
     label: 'My Team',
     icon: UserCheck,
     href: '/my-team',
+  },
+  {
+    id: 'teams',
+    label: 'Teams',
+    icon: UsersRound,
+    href: '/teams',
   },
   {
     id: 'tracker',
